@@ -110,17 +110,17 @@ PlaceMelting = function(vect, vect2) {
 
 **WARNING:** Before uploading the TCD file, please check with the TCD_cleanR that the TCD.csv does **NOT** contain any error in all the **CONCLUSIONS** (this task may require several run of utilisation of the function TCD_cleanR).
 
-```{r} 
-# tkmessageBox(message = "Choose a quant file", type = "ok")
-# TCDpath <- tclvalue(tkgetOpenFile())
-# if (!nchar(TCDpath)) {
-#  tkmessageBox(message = "No file was selected!")
-# } else {
-#  tkmessageBox(message = paste("The file selected was", TCDpath))
-# }
-## todo read.xls
-TCDpath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/TCD.csv"
-TCD <- read.csv(file = TCDpath, h = T, dec = ".", sep = ",")
+```{r include=FALSE, cache=FALSE} 
+tkmessageBox(message = "Choose a TCD file", type = "ok")
+TCDpath <- tclvalue(tkgetOpenFile())
+if (!nchar(TCDpath)) {
+ tkmessageBox(message = "No file was selected!")
+} else {
+ tkmessageBox(message = paste("The file selected was", TCDpath))
+}
+# todo read.xls
+# TCDpath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/TCD.csv"
+TCD <- read.xls (TCDpath, sheet = 1, header = TRUE)
 
 Rank.Analysis <- 2: (nrow(TCD)+ 1) # +1 to make the excel file correspond to the R file
 
@@ -136,17 +136,20 @@ The TCD file chosen is `r TCDpath`
 
 ### 2. Open and set the quantitative file
 **WARNING:** Before uploading the weight file, please check that the order in TCD file and weight files are the same (checked in the next calculation but the calculations will be stop if this condition is not respected).
-```{r} 
-# tkmessageBox(message = "Choose the file containing the weight of your sample", type = "ok")
-# weightPath <- tclvalue(tkgetOpenFile())
-# if (!nchar(weightPath)) {
-#  tkmessageBox(message = "No file was selected!")
-# } else {
-#  tkmessageBox(message = paste("The file selected was", weightPath))
-# }
-weightPath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/weight.csv"
-weightData <- read.csv(weightPath, h = T, dec = ".", sep = ",")
+```{r include=FALSE, cache=FALSE} 
+tkmessageBox(message = "Choose the file containing the weight of your sample", type = "ok")
+weightPath <- tclvalue(tkgetOpenFile())
+if (!nchar(weightPath)) {
+ tkmessageBox(message = "No file was selected!")
+} else {
+ tkmessageBox(message = paste("The file selected was", weightPath))
+}
+# weightPath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/weight.csv"
+# weightData <- read.csv(weightPath, h = T, dec = ".", sep = ",")
+weightData <- read.xls (weightPath, sheet = 1, header = TRUE)
 nRow.weightData <- nrow(weightData)
+
+weightData$Box.pos <- as.character(weightData$Box.pos)
 ```
 The TCD file chosen is `r weightPath`
 <br><br>
@@ -233,32 +236,38 @@ for(x in 1:nbRow.TCD_dataSample) {
  temporary.TCDtable <- cbind(seq(1:nRow.temporary.TCDtable), temporary.TCDtable)
  
  colnames(temporary.TCDtable) <- c("Analysis.Rank", colnames(TCD)[4:5], "Area.Flash.TCD.N", "Area.Flash.TCD.C")
- 
+
  temporary.TCDtable$Area.Flash.TCD.N <- as.numeric(as.character(temporary.TCDtable$Area.Flash.TCD.N))
  temporary.TCDtable$Area.Flash.TCD.C <- as.numeric(as.character(temporary.TCDtable$Area.Flash.TCD.C))
  
- return(temporary.TCDtable)
-  
+  return(temporary.TCDtable)
 })
 
-output$dataSampleToPrint <- renderDT({
-  quantTable()
-})
+# output$dataSampleToPrint <- renderText({
+#   weightData$Box.pos
+# })
+# 
+# output$dataSampleToPrint2 <- renderText({
+#   quantTable()$Identifier.2
+# })
 
 ```
+
 <br><br>
 
 ### 3. Check graphically the outliers
 Please check potential outliers of Area.Flash.TCD.C and Area.Flash.TCD.N
 ```{r }
 output$boxplot <- renderPlot({
-  if(length(quantTable()$Area.Flash.TCD.N) != 0 & length(quantTable()$Area.Flash.TCD.C) != 0 & !is.na(quantTable()$Area.Flash.TCD.N) & !is.na(quantTable()$Area.Flash.TCD.C)) {
+  
+  if(length(input$sample) != 0){
     par(mfrow = c(1,2), mar = c(2,3,1.2,1.2))
     boxplot(quantTable()$Area.Flash.TCD.N)
     mtext("Area.Flash.TCD.N", side = 1)
     boxplot(quantTable()$Area.Flash.TCD.C, xlab="Area.Flash.TCD.C")
     mtext("Area.Flash.TCD.C", side = 1)
-  } else {NULL}
+  }
+  
 })
 ```
 `r plotOutput('boxplot')`
@@ -295,17 +304,17 @@ ToDisplay <- reactive({
   return(list(c(errorToCount, line.flag), temporary.TCDtable))
 })
 
-errorToDisplay <- reactive({
-  
-})
-
 sampleWithWeight <- reactive({
   ToDisplay()[2][[1]]
 })
 
 output$errorPrint <- renderText({
   if(ToDisplay()[[1]][1] != 0){
-    paste("Be Careful, weight file and TCD do not match on their identifier.2", ToDisplay()[[1]][2])
+    if(!is.na(ToDisplay()[[1]][2])){
+      paste("Be Careful, weight file and TCD do not match on their identifier.2, check line(s):", ToDisplay()[[1]][2])
+    } else {
+      "Not the same number of line"    
+    }
   } else {}
 })
 ```

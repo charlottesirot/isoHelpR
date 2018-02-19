@@ -155,15 +155,15 @@ textInput("Method", label = "", value = "Method:")
 
 ### 1. Import of the raw data of signature
 
-```{r} 
-# tkmessageBox(message = "Choose a signature file", type = "ok")
-# CN_EA.path <- tclvalue(tkgetOpenFile())
-# if (!nchar(CN_EA.path)) {
-#  tkmessageBox(message = "No file was selected!")
-# } else {
-#  tkmessageBox(message = paste("The file selected was", CN_EA.path))
-# }
-CN_EA.path <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/CNEA.xls"
+```{r include=FALSE, cache=FALSE} 
+tkmessageBox(message = "Choose a CNEA file", type = "ok")
+CN_EA.path <- tclvalue(tkgetOpenFile())
+if (!nchar(CN_EA.path)) {
+ tkmessageBox(message = "No file was selected!")
+} else {
+ tkmessageBox(message = paste("The file selected was", CN_EA.path))
+}
+# CN_EA.path <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/CNEA.xls"
 CN_EA.data <- read.xls(xls = CN_EA.path, sheet = 1, header = TRUE)
 
 Rank.Analysis <- 2: (nrow(CN_EA.data)+ 1) # +1 to make the excel file correspond to the R file
@@ -180,17 +180,20 @@ The CN_EA file chosen is `r CN_EA.path`
 
 ### 2. Import the weight data
 **WARNING:** Before uploading the weight file, please check that the order in TCD file and weight files are the same (checked in the next calculation but the calculations will be stop if this condition is not respected).
-```{r} 
-# tkmessageBox(message = "Choose the file containing the weight of your sample", type = "ok")
-# weightPath <- tclvalue(tkgetOpenFile())
-# if (!nchar(weightPath)) {
-#  tkmessageBox(message = "No file was selected!")
-# } else {
-#  tkmessageBox(message = paste("The file selected was", weightPath))
-# }
-weightPath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/weight.csv"
-weightData <- read.csv(weightPath, h = T, dec = ".", sep = ",")
+```{r include=FALSE, cache=FALSE} 
+tkmessageBox(message = "Choose the file containing the weight of your sample", type = "ok")
+weightPath <- tclvalue(tkgetOpenFile())
+if (!nchar(weightPath)) {
+ tkmessageBox(message = "No file was selected!")
+} else {
+ tkmessageBox(message = paste("The file selected was", weightPath))
+}
+# weightPath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/weight.csv"
+weightData <- read.xls(xls = weightPath, sheet = 1, header = TRUE)
+# weightData <- read.csv(weightPath, h = T, dec = ".", sep = ",")
 nRow.weightData <- nrow(weightData)
+
+weightData$Box.pos <- as.character(weightData$Box.pos)
 ```
 The TCD file chosen is `r weightPath`
 <br><br>
@@ -731,8 +734,12 @@ return(table2.sample.Karina)
  output$dataSampleToPrint <- renderDT({
    
    if(length(input$C.define) > 1 & length(input$N.define) > 1 ) {
+     write.csv(table2.sample.Karina(), file = "table2.sample.Karina.csv")
      table2.sample.Karina()
    } else {}
+   
+   
+   
 })
 
 
@@ -817,6 +824,7 @@ output$modelC <- renderText({
 output$FinalTable <- renderDT({
   
   if(length(input$C.define) > 1 & length(input$N.define) > 1 ) {
+    write.csv(table2.sample.Peter(), file = "table2.sample.Peter.csv")
    table2.sample.Peter()
   } else {}
   

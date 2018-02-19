@@ -331,18 +331,15 @@ successiveValues = function(vect) {
 
 ### 1. Import of the raw data of signature
 
-```{r} 
-# tkmessageBox(message = "Choose a signature file", type = "ok")
-# CN_EA.path <- tclvalue(tkgetOpenFile())
-# if (!nchar(CN_EA.path)) {
-#  tkmessageBox(message = "No file was selected!")
-# } else {
-#  tkmessageBox(message = paste("The file selected was", CN_EA.path))
-# }
-```
-
-```{r} 
-CN_EA.path <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/CNEA.xls"
+```{r include=FALSE, cache=FALSE} 
+tkmessageBox(message = "Choose a CNEA file", type = "ok")
+CN_EA.path <- tclvalue(tkgetOpenFile())
+if (!nchar(CN_EA.path)) {
+ tkmessageBox(message = "No file was selected!")
+} else {
+ tkmessageBox(message = paste("The file selected was", CN_EA.path))
+}
+# CN_EA.path <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/CNEA.xls"
 CN_EA.data <- read.xls(xls = CN_EA.path, sheet = 1, header = TRUE)
 
 Rank.Analysis <- 2: (nrow(CN_EA.data)+ 1) # +1 to make the excel file correspond to the R file
@@ -452,11 +449,14 @@ signature.Table <- as.data.frame(signature.Table)
 
 ## detect the error
 
-error.d13C <- which(as.numeric(as.character(resultMatrix$Nb.d13C)) == 0 | resultMatrix$Nb.d13C == "")
-error.d15N <- which(as.numeric(as.character(resultMatrix$Nb.d15N)) == 0 | resultMatrix$Nb.d15N == "")
+error.d13C <- resultMatrix$FirstLine[which(as.numeric(as.character(resultMatrix$Nb.d13C)) == 0 | resultMatrix$Nb.d13C == "")]
+error.d15N <- resultMatrix$FirstLine[which(as.numeric(as.character(resultMatrix$Nb.d15N)) == 0 | resultMatrix$Nb.d15N == "")]
 
 is.error.d13C <- length(error.d13C)
 is.error.d15N <- length(error.d15N)
+
+
+
 ```
 
 **CONCLUSIONS FOR D13C:** <br>
@@ -474,8 +474,8 @@ Here, CN_EA.CleanR shows some abnormalities that have to be controled by the use
 
 length.error.dilution <- length(error.dilution)
 
-weird.d13C <- which(as.numeric(as.character(resultMatrix$Nb.d13C)) != 2)
-weird.d15N <- which(as.numeric(as.character(resultMatrix$Nb.d15N)) != 4 & as.numeric(as.character(resultMatrix$Nb.d15N)) != 3)
+weird.d13C <- resultMatrix$FirstLine[which(as.numeric(as.character(resultMatrix$Nb.d13C)) != 2)]
+weird.d15N <- resultMatrix$FirstLine[which(as.numeric(as.character(resultMatrix$Nb.d15N)) != 4 & as.numeric(as.character(resultMatrix$Nb.d15N)) != 3)]
 
 is.weird.d13C <- length(weird.d13C)
 is.weird.d15N <- length(weird.d15N)

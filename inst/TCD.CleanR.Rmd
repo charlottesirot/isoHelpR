@@ -71,15 +71,15 @@ is.null.vector <- function(x) {
 
 ### 1. Import TCD data to clean
 
-```{r} 
-# tkmessageBox(message = "Choose a quant file", type = "ok")
-# TCDpath <- tclvalue(tkgetOpenFile())
-# if (!nchar(TCDpath)) {
-#  tkmessageBox(message = "No file was selected!")
-# } else {
-#  tkmessageBox(message = paste("The file selected was", TCDpath))
-# }
-TCDpath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/TCD.xls"
+```{r include=FALSE, cache=FALSE} 
+tkmessageBox(message = "Choose a TCD file", type = "ok")
+TCDpath <- tclvalue(tkgetOpenFile())
+if (!nchar(TCDpath)) {
+ tkmessageBox(message = "No file was selected!")
+} else {
+ tkmessageBox(message = paste("The file selected was", TCDpath))
+}
+# TCDpath <- "/home/cha/Dropbox/Post-doc_Danemark/Results/Script/TCD.xls"
 TCD <- read.xls (TCDpath, sheet = 1, header = TRUE)
 
 Rank.Analysis <- 2: (nrow(TCD)+ 1) # +1 to make the excel file correspond to the R file
@@ -97,7 +97,7 @@ The TCD file chosen is `r TCDpath`
 ### 2. Conditions for tested by isoHelpR
 * General conditions:
     + Any identifier 1 should not be empty or null
-    + Peak.Nr..Flash.TCD column accept only the following values:1, 2, NA or empty cell
+    + Peak.Nr..Flash.TCD column accepts only the following values:1, 2, NA or empty cell
 * For standards:
     + rArea Flash TCD with exactly three lines containing exactly two values and an empty cell (NA accepted). The analysis of the sucrose is an exception (exactly two lines containing exactly one values and an empty cell (NA accepted))
 * For samples:
