@@ -163,17 +163,12 @@ These tables are already exported if needed ("dataSampleToPrint.csv" and "dataSt
 ### 5. General conditions
 ```{r}
 Lineerror_identifier.1 <- which(is.null.vector(TCD$Identifier.1) | is.na(TCD$Identifier.1) | TCD$Identifier.1 == "NA" | TCD$Identifier.1 == "")
+LinePeak.Nr <- which(TCD$Peak.Nr..Flash.TCD != 1 & TCD$Peak.Nr..Flash.TCD != 2 & !is.na(TCD$Peak.Nr..Flash.TCD) & TCD$Peak.Nr..Flash.TCD != "")
 ```
 <br>
 **CONCLUSION:**<br><br>
 There is  **`r if(length(Lineerror_identifier.1) == 0){"no"} else {length(Lineerror_identifier.1)}`** error in the identifier.1 column at the line(s): `r if(length(Lineerror_identifier.1) == 0){NA} else {Lineerror_identifier.1}`
 <br><br>
-
-```{r}
-LinePeak.Nr <- which(TCD$Peak.Nr..Flash.TCD != 1 & TCD$Peak.Nr..Flash.TCD != 2 & !is.na(TCD$Peak.Nr..Flash.TCD) & TCD$Peak.Nr..Flash.TCD != "")
-```
-<br>
-**CONCLUSION:**<br><br>
 There is  **`r if(length(LinePeak.Nr) == 0){"no"} else {length(LinePeak.Nr)}`** error in the Peak.Nr..Flash.TCD column at the line(s): `r if(length(LinePeak.Nr) == 0){NA} else {LinePeak.Nr}`
 <br><br>
 
@@ -309,9 +304,6 @@ output$standardError.2 <- renderText({
 <br><br>
 
 ### 7. Sample format checking
-<br>
-
-#### a. Check that the identifier.2 is not empty
 
 ```{r}
 
@@ -336,19 +328,8 @@ output$text.Lineerror_identifier.2.Sample <- renderText({
   
   if(length(Lineerror_identifier.2.Sample()) == 0){rendR2 <- NA} else {rendR2 <- Lineerror_identifier.2.Sample()}
   
-  return(paste("There is(are)", rendR, "error(s) in the identifier.2 column at the line(s):", paste(rendR2, sep = " ", collapse = " ")))
+  return(paste("1. There is(are)", rendR, "error(s) in the identifier.2 column at the line(s):", paste(rendR2, sep = " ", collapse = " ")))
      })
-
-```
-<br>
-
-**CONCLUSION:**
-`r textOutput('text.Lineerror_identifier.2.Sample')`
-<br><br>
-
-#### b. Check the number of line available and the values of the data (2 values and 1 empty cell for each analysis)
-
-```{r}
 
 dataSample <- reactive({
    dataTables()[[1]]
@@ -437,13 +418,16 @@ output$sampleError.2 <- renderText({
      })
 
 ```
-<br><br>
-**CONCLUSIONS: **<br><br>
-1. Number of line (2 lines for sucrose and 3 for the rest):
+<br>
+
+**CONCLUSION:**
+`r textOutput('text.Lineerror_identifier.2.Sample')`
+<br>
+2. Number of line (2 lines for sucrose and 3 for the rest):
 `r textOutput('length.sampleError')`
 `r textOutput('sampleError')`
 <br>
-2. Missing values (1 values and 1 empty cell for sucrose, 2 values and 1 empty cell for the rest of the standards)
+3. Missing values (1 values and 1 empty cell for sucrose, 2 values and 1 empty cell for the rest of the standards)
 `r textOutput('length.sampleError.2')`
 `r textOutput('sampleError.2')`
 <br><br>
