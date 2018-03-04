@@ -907,7 +907,7 @@ output$Value.C.sec_OK <- renderText({
 
 Data_plus_weight <- reactive({ ## for pasting the weight of the sample
 
-  if(!is.null(input$CNEA) & !is.null(input$weightData)) {
+  if(!is.null(input$CNEA) & !is.null(input$weightData) & !is.null(resultMatrix())) {
 
   errorToCount <- 0 # flag for error
   line.flag <- NA
@@ -1001,6 +1001,7 @@ Necessary conditions (i.e. corrections **mandatory** for IsoSignature.creatR)
 **`r textOutput("error.area_Error")`**
 `r textOutput("error.area_OK")`
 <br>
+
 Secondary conditions (i.e. corrections are not mandatory, CNEA.CleanR just mentionned them to warn user)
 
 1. Analysis should have exactly one dilution value
@@ -1084,6 +1085,76 @@ output$boxplot <- renderPlot({
 
 ------------------------------------------------------------------------------------------------------------------------------
 
+### Conclusions of the cleaning
+
+```{r}
+finalConclusion <- reactive({
+
+  if(!is.null(resultMatrix())) {
+
+  errorC <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C == 0)]
+  errorN <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N == 0)]
+
+  error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
+  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
+
+  errDilution <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.dilution != 1)]
+
+  CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
+
+  CNEA.liste <- CNEA.liste[which(names(CNEA.liste) != "")]
+  sucrose <- names(CNEA.liste)[str_detect(names(CNEA.liste), "ucrose")]
+
+  errSucr <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 3 & resultMatrix()$Identifier.1 == sucrose)]
+  errSucr2 <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 4 & resultMatrix()$Identifier.1 != sucrose)]
+
+  E <- c(errSucr, errSucr2)
+
+  errNbValueC <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C != 2)]
+  
+  if(!is.null(Data_plus_weight())) {
+    
+      if(length(bad.Id1()) != 0 | length(error.area()) != 0 | length(errorC) != 0 | length(errorN) != 0 | length(error_id.2) != 0 | length(error.id2.sample) != 0 | length(errDilution) != 0 | length(E) != 0 | length(errNbValueC) != 0 | Data_plus_weight()[[1]][1] != 0) {
+    return(TRUE)
+  } else {return(FALSE)}
+    
+  } else {return(TRUE)}
+
+  } else {return(TRUE)}
+
+
+})
+
+output$finalConclusion_error <- renderText({
+  if(!is.null(resultMatrix())) {
+
+  if(finalConclusion() == TRUE) {
+    "There is at least one mistake in your files. <br> Please correct according to previously before continuing to read this file."
+  } else {NULL}
+
+  } else {NULL}
+})
+
+output$finalConclusion_OK <- renderText({
+
+  if(!is.null(resultMatrix())) {
+    
+    if(finalConclusion() == FALSE) {
+    "It seems that your files are correct."
+    } else {NULL}
+  } else {NULL}
+  
+})
+
+
+```
+`r textOutput("finalConclusion_OK")`
+**`r span(htmlOutput("finalConclusion_error"), style="color:red")`**
+<br>
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
 ### Settings for "IsotopeSignature.file" creation
 **WARNING:** Before continuing in this file, please check the conditions above do **NOT** contain any error in required **CONCLUSIONS** (this task may require several run of utilisation of the function CNEA_cleanR). If the TCD file is upload without this last verification, CNEA_cleanR **CANNOT** garantee the validity of the following data.
 <br><br>
@@ -1135,6 +1206,44 @@ output$info.2 <- renderUI({
   
 })
 
+nameInput.C <- reactive({
+  
+  if(!is.null(input$C.define)) {
+
+  nameInput <- vector()
+
+    for(i in 1:length(input$C.define)) {
+      nameInput[i] <- paste0(resultMatrix()$Identifier.1[which(input$C.define[i] == resultMatrix()$Identifier.1)], "_inputName.C")
+    }
+  
+  return(nameInput)
+  
+    
+  }
+  
+})
+
+output$chooseValue.C.stand <- renderUI({
+  
+  if(!is.null(input$CNEA) & !is.null(input$C.define)) {
+
+  lapply(1:length(input$C.define), function(x){
+
+    div(
+      column(6, p(paste("Select the values that you want to keep for", resultMatrix()$Identifier.1[which(input$C.define[x] == resultMatrix()$Identifier.1)]))),
+      column(6,
+             checkboxGroupInput(nameInput.C()[x], label = p(""),
+                                choices = resultMatrix()$d13C[which(input$C.define[x] == resultMatrix()$Identifier.1)],
+                                selected = resultMatrix()$d13C[which(input$C.define[x] == resultMatrix()$Identifier.1)],
+                                inline = T),
+             br()
+    )
+
+    )
+    })
+  }
+})
+
 output$checkBox.C <- renderUI({
   
   if(!is.null(input$CNEA)) {
@@ -1153,15 +1262,15 @@ output$checkBox.C <- renderUI({
 
 output$Value.C <- renderUI({
   
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & !is.null(input$C.define)) {
   
   CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
   
   level.identifier.1 <- names(CNEA.liste)
   
-  plot_output_list <- lapply(seq(from = 1, to = length(level.identifier.1), by = 1), function(i) {
+  plot_output_list <- lapply(seq(from = 1, to = length(input$C.define), by = 1), function(i) {
 								V.C <- paste("value.C", i, sep="")
-								textInput(V.C, label = "", value = paste("Value C for ", level.identifier.1[i]))
+								textInput(V.C, label = "", value = paste("Value C for ", input$C.define[i]))
     })
   
   } else {}
@@ -1169,7 +1278,7 @@ output$Value.C <- renderUI({
 
 c.ToTake <- reactive({
   
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & !is.null(input$C.define)) {
     
   CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
     
@@ -1187,7 +1296,7 @@ c.ToTake <- reactive({
 
 value.C <- reactive({
   
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & !is.null(input$C.define)) {
     
   CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
     
@@ -1195,7 +1304,7 @@ value.C <- reactive({
   
   temp <- vector()
   
-  for(i in 1:length(level.identifier.1)){
+  for(i in 1:length(input$C.define)){
 
     temp <- c(temp, eval(parse(text = paste("input$value.C", i, sep=""))))
 
@@ -1208,20 +1317,59 @@ value.C <- reactive({
 
 value.C.toTake <- reactive({
   
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & !is.null(input$C.define)) {
     
     CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
     
     level.identifier.1 <- names(CNEA.liste)
+    
+    temp <- value.C()
   
-  temp <- value.C()[c.ToTake()]
-  
-  names(temp) <- level.identifier.1[c.ToTake()]
+  # temp <- value.C()[c.ToTake()]
+  # 
+  # names(temp) <- level.identifier.1[c.ToTake()]
   
   return(temp)
   
   } else {}
   
+})
+
+nameInput.N <- reactive({
+  
+  if(!is.null(input$N.define)) {
+
+  nameInput <- vector()
+
+    for(i in 1:length(input$N.define)) {
+      nameInput[i] <- paste0(resultMatrix()$Identifier.1[which(input$N.define[i] == resultMatrix()$Identifier.1)], "_inputName.N")
+    }
+  
+  return(nameInput)
+  
+  }
+  
+})
+
+output$chooseValue.N.stand <- renderUI({
+  
+  if(!is.null(input$CNEA) & !is.null(input$N.define)) {
+
+  lapply(1:length(input$N.define), function(x){
+
+    div(
+      column(6, p(paste("Select the values that you want to keep for", resultMatrix()$Identifier.1[which(input$N.define[x] == resultMatrix()$Identifier.1)]))),
+      column(6,
+             checkboxGroupInput(nameInput.N()[x], label = p(""),
+                                choices = resultMatrix()$d15N[which(input$N.define[x] == resultMatrix()$Identifier.1)],
+                                selected = resultMatrix()$d15N[which(input$N.define[x] == resultMatrix()$Identifier.1)],
+                                inline = T),
+             br()
+    )
+
+    )
+    })
+  }
 })
 
 output$checkBox.N <- renderUI({
@@ -1242,15 +1390,15 @@ output$checkBox.N <- renderUI({
 
 output$Value.N <- renderUI({
   
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & !is.null(input$N.define)) {
     
     CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
     
     level.identifier.1 <- names(CNEA.liste)
     
-  plot_output_list <- lapply(seq(from = 1, to = length(level.identifier.1), by = 1), function(i) {
+  plot_output_list <- lapply(seq(from = 1, to = length(input$N.define), by = 1), function(i) {
 								V.N <- paste("value.N", i, sep="")
-								textInput(V.N, label = "", value = paste("Value N for ", level.identifier.1[i]))
+								textInput(V.N, label = "", value = paste("Value N for ", input$N.define[i]))
     })
   
   } else {}
@@ -1258,7 +1406,7 @@ output$Value.N <- renderUI({
 
 n.ToTake <- reactive({
     
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & !is.null(input$N.define)) {
     
     CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
     
@@ -1276,7 +1424,7 @@ n.ToTake <- reactive({
 
 value.N <- reactive({
   
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & !is.null(input$N.define)) {
     
     CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
     
@@ -1284,7 +1432,7 @@ value.N <- reactive({
   
   temp <- vector()
   
-  for(i in 1:length(level.identifier.1)){
+  for(i in 1:length(input$N.define)){
 
     temp <- c(temp, eval(parse(text = paste("input$value.N", i, sep=""))))
 
@@ -1297,27 +1445,30 @@ value.N <- reactive({
 
 value.N.toTake <- reactive({
   
-  if(!is.null(input$CNEA)) {  
+  if(!is.null(input$CNEA) & !is.null(input$N.define)) {  
   
     CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
     
     level.identifier.1 <- names(CNEA.liste)
+    
+    temp <- value.N()
   
-  temp <- value.N()[n.ToTake()]
+  # temp <- value.N()[n.ToTake()]
   
-  names(temp) <- level.identifier.1[n.ToTake()]
+  # names(temp) <- level.identifier.1[n.ToTake()]
   
   return(temp)
   
   } else {}
   
 })
-
-
 ```
 `r div(column(6, uiOutput("checkBox.N")), column(6, uiOutput("Value.N")))` 
-<br>
+`r div(column(12, uiOutput("chooseValue.N.stand")))`
+<br><br>
 `r div(column(6, uiOutput("checkBox.C")), column(6, uiOutput("Value.C")))`
+`r div(column(12, uiOutput("chooseValue.C.stand")))`
+<br><br>
 
 ```{r}
 #############################################################################################################################
@@ -1332,9 +1483,7 @@ table1 <- reactive({
 
 for(i in 1:length(input$N.define)) {
   
-  dataTemp <- resultMatrix()[which(resultMatrix()$Identifier.1 == input$N.define[i]),]
-  
-  nitrogen.table1[[i]] <- dataTemp$d15N
+  nitrogen.table1[[i]] <- eval(parse(text = paste0("input$\'", nameInput.N()[i], "\'")))
   
 }
 
@@ -1342,9 +1491,7 @@ carbon.table1 <- list()
 
 for(i in 1:length(input$C.define)) {
   
-  dataTemp <- resultMatrix()[which(resultMatrix()$Identifier.1 == input$C.define[i]),]
-  
-  carbon.table1[[i]] <- dataTemp$d13C
+  carbon.table1[[i]] <- eval(parse(text = paste0("input$\'", nameInput.C()[i], "\'")))
   
 }
 
@@ -1376,8 +1523,8 @@ for(i in 2:(length(input$C.define) + length(input$N.define) + 1)) {
   
   analysis <- as.numeric(as.character(table1[,i]))
   
-  table1[(nrow.table1-2),i] <- mean(analysis, na.rm = T)
-  table1[(nrow.table1-1),i] <- sd(analysis, na.rm = T)
+  table1[(nrow.table1-2),i] <- round(mean(analysis, na.rm = T), digits = 2)
+  table1[(nrow.table1-1),i] <- round(sd(analysis, na.rm = T), digits = 2)
 }
 
 table1[nrow.table1,(2:ncol.table1)] <- c(as.numeric(as.character(value.N.toTake())), as.numeric(as.character(value.C.toTake())))
@@ -1391,8 +1538,6 @@ return(table1)
   } else {
     toAdd <- input$nameSession
   }
-  
-  write.csv(table1(), file = paste0("table1_",toAdd, ".csv" ))
 
   } else {}
   
@@ -1410,8 +1555,9 @@ output$table1.toDisplay <- renderDT({
 #############################################################################################################################
 
 table2 <- reactive({
-
-  resultMatrix <- resultMatrix()[order(as.numeric(as.character(resultMatrix()$FirstLine))),]
+  
+  if(!is.null(resultMatrix())) {
+    resultMatrix <- resultMatrix()[order(as.numeric(as.character(resultMatrix()$FirstLine))),]
 
   line.sample  <- lapply(1:length(input$sample), function(x) {
     which(resultMatrix$Identifier.1 == input$sample [x])
@@ -1543,6 +1689,9 @@ table2 <- reactive({
   table2.sample <- cbind(Rank.Analysis, table2.sample)
   
    return(list(table2.standard, table2.sample))
+  } else {NULL}
+
+  
 })
 
 table2.standard <- reactive({
@@ -1594,17 +1743,14 @@ table.WithoutGelA <- reactive({
 })
 
 output$dilutionTable <- renderTable({
+  
+  if(!is.null(resultMatrix())) {
   dilution()[[1]]
+    
+  }
 }, include.rownames=TRUE)
 
-# output$display <- renderTable({
-#   table.WithoutGelA()
-# })
-
 ```
-
-
-`r tableOutput("check")`
 
 ------------------------------------------------------------------------------------------------------------------------------
 
@@ -1652,10 +1798,146 @@ output$dataSampleKarina <- renderDT({
   } else {
     toAdd <- input$nameSession
   }
-  
-  write.csv(table2.sample.Karina(), file = paste0("table2.sample.Karina_",toAdd, ".csv" ))
+     
+     table0 <- matrix("", 20, 2)
+     
+table0[,1] <- c("Total C and D Isotope Analysis", 
+                "", 
+                "1. Session settings",
+                "Date", 
+                "Samples", 
+                "Responsible", 
+                "Lab. Temp", 
+                "System", 
+                "Column", 
+                "Temp, Owen", 
+                "Carrier gas", 
+                "Carrier flow", 
+                "Reference gas1",
+                "Reference flow", 
+                "Reference gas2",
+                "Reference flow", 
+                "Method", 
+                "", "",
+                "2. Blank corrected delta values for isotope standards"
+)
+table0[,2] <- c("", 
+                "", 
+                "", 
+                input$dateProcessig, 
+                input$SampleName, 
+                input$Responsible, 
+                input$Temperature, 
+                input$system, 
+                input$Column, 
+                input$temp.Owen, 
+                input$carrier.Gas, 
+                input$carrier.flow, 
+                input$Reference.gas1,
+                input$Reference.flow1, 
+                input$Reference.gas2,
+                input$Reference.flow2, 
+                input$Method, 
+                "", "", 
+                ""
+)
+table1_new <- table1()
+
+lapply(2:ncol(table1_new), function(x) {
+  table1_new[3:nrow(table1_new),x] <- as.numeric(as.character(table1_new[3:nrow(table1_new), x]))
+})
+table1_new[1:2,1] <- c("Isotope", "Standard")
+
+
+table2.standard_new <- table2.standard()
+lapply(5:ncol(table2.standard_new), function(x) {
+  table2.standard_new[1:nrow(table2.standard_new), x] <- as.numeric(as.character(table2.standard_new[1:nrow(table2.standard_new), x]))
+})
+
+table2.sample.Karina_new <- table2.sample.Karina()
+lapply(5:ncol(table2.sample.Karina_new), function(x) {
+  table2.sample.Karina_new[1:nrow(table2.sample.Karina_new), x] <- as.numeric(as.character(table2.sample.Karina_new[1:nrow(table2.sample.Karina_new), x]))
+})
+
+table.Interm1 <- matrix("3. Blank correction of delta value in standards", ncol = 1, nrow = 1)
+table.Interm2 <- matrix("4. Results from samples", ncol = 1, nrow = 1)
+
+normStyle <- createStyle(valign = "center", halign = "center", numFmt = "0.00")
+GeneraltitleStyle <- createStyle(valign = "center", halign = "center", fontSize = 14, textDecoration = "bold")
+titleStyle <- createStyle(valign = "center", halign = "left", fontSize = 14, textDecoration = "bold")
+tableStyle <- createStyle(borderStyle = "thin", border = "TopBottomLeftRight")
+
+colorBlue <- createStyle(fgFill = "#99ccff")
+colorGreen <- createStyle(fgFill = "#00ff00")
+
+wb <- createWorkbook("Example.xlsx")
+
+addWorksheet(wb, "CNEA_data")
+writeData(wb, sheet = 1, CNEA(), colNames = T)
+
+addWorksheet(wb, "isotope_data")
+
+writeData(wb, sheet = 2, table0, colNames = FALSE)
+writeData(wb, sheet = 2, table1_new, startRow = nrow(table0) + 1, colNames = F)
+writeData(wb, sheet = 2, table.Interm1, startRow = nrow(table0) + nrow(table1_new) + 3, colNames = F)
+writeData(wb, sheet = 2, table2.standard_new, startRow = nrow(table0) + nrow(table1_new) + 4, colNames = T)
+writeData(wb, sheet = 2, table.Interm2, startRow = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 7, colNames = F)
+writeData(wb, sheet = 2, table2.sample.Karina_new, startRow = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 8, colNames = T)
+
+
+nbRow_FinalTable <- nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + nrow(table2.sample.Karina_new) + 8
+
+lapply(1:17, function(x) {
+  addStyle(wb, sheet = 2, normStyle, cols = x, rows = 1:nbRow_FinalTable)
+})
+
+addStyle(wb, sheet = 2, GeneraltitleStyle, rows = 1, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = 20, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = nrow(table0) + nrow(table1_new) + 3, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 7, cols = 1, stack = T)
+
+table1_end <- nrow(table0) + nrow(table1_new)
+
+lapply(1:5, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, cols = x, rows = 21:table1_end, stack = T)
+})
+
+table2_stand_begin <- nrow(table0) + nrow(table1_new) + 4
+table2_stand_end <- nrow(table0) + nrow(table1_new) + 4 + nrow(table2.standard_new)
+
+lapply(1:16, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, rows = table2_stand_begin:table2_stand_end, cols = x, stack = T)
+})
+
+addStyle(wb, sheet = 2, colorBlue, cols = 8, rows = table2_stand_begin:table2_stand_end, stack = T)
+addStyle(wb, sheet = 2, colorBlue, cols = 15, rows = table2_stand_begin:table2_stand_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 9, rows = table2_stand_begin:table2_stand_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 16, rows = table2_stand_begin:table2_stand_end, stack = T)
+
+table2_sample_begin <- nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 8
+table2_sample_end <-  nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 8 + nrow(table2.sample.Karina_new)
+
+lapply(1:17, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, rows = table2_sample_begin:table2_sample_end, cols = x, stack = T)
+})
+
+addStyle(wb, sheet = 2, colorBlue, cols = 9, rows = table2_sample_begin:table2_sample_end, stack = T)
+addStyle(wb, sheet = 2, colorBlue, cols = 16, rows = table2_sample_begin:table2_sample_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 10, rows = table2_sample_begin:table2_sample_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 17, rows = table2_sample_begin:table2_sample_end, stack = T)
+
+mergeCells(wb, sheet = 2, cols = 1:18, rows = 1)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = 20)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + nrow(table1_new) + 3)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 7)
+
+mergeCells(wb, sheet = 2, cols = 2:3, rows = 21)
+mergeCells(wb, sheet = 2, cols = 4:5, rows = 21)
+
+
+saveWorkbook(wb, file = paste0("table2.sample.Karina_",toAdd, ".xlsx" ), overwrite = TRUE)
   table2.sample.Karina()
-   } else {}
+} else {}
 })
 
 ```
@@ -1666,8 +1948,9 @@ output$dataSampleKarina <- renderDT({
 
 ### Peter's procedure of Normalization
 <br>
-Define the dilution factor to consider for the normalization: 
+Here, the user has to select the relevant dilution to keep in the linear regression
 `r tableOutput('dilutionTable')`
+Define the dilution factor to consider for the normalization: 
 `r uiOutput('choiceDilution')`
 
 
@@ -1675,7 +1958,9 @@ Define the dilution factor to consider for the normalization:
 
 output$choiceDilution <- renderUI({
   
-  dilution.suggested <- levels(as.factor(gelA.table()$equipement.dilution))
+  if(!is.null(resultMatrix())) {
+    
+      dilution.suggested <- levels(as.factor(gelA.table()$equipement.dilution))
   
   toPick.dilution <- dilution.suggested[which(dilution.suggested != "0" & dilution.suggested != " " & dilution.suggested != "" & !is.na(dilution.suggested))]
   
@@ -1683,10 +1968,13 @@ output$choiceDilution <- renderUI({
                    choices = toPick.dilution,
                    selected = toPick.dilution[1],
                    inline = TRUE)
-  
+    
+  }
 })
 
 gelA.table.dilution <- reactive({
+  
+  if(!is.null(resultMatrix())) {
   
   toConsider <-lapply(1:length(input$dilutionPicked), function(x) {
     which(gelA.table()$equipement.dilution == input$dilutionPicked[x])
@@ -1699,6 +1987,8 @@ gelA.table.dilution <- reactive({
   gelA.table.dilution <- gelA.table.dilution[order(gelA.table.dilution$Rank.Analysis),]
   
   return(gelA.table.dilution)
+  
+  }
 })
 
 output$GelA.tokeep.N <- renderUI({
@@ -1714,6 +2004,8 @@ output$GelA.tokeep.N <- renderUI({
 
 gelA.dilution_toKeep.N <- reactive({
   
+  if(!is.null(resultMatrix()) & !is.null(input$GelA.tokeep.N)) {
+  
   toConsider <-lapply(1:length(input$GelA.tokeep.N), function(x) {
       which(gelA.table.dilution()$Box.position == input$GelA.tokeep.N[x])
   })
@@ -1725,9 +2017,13 @@ gelA.dilution_toKeep.N <- reactive({
   gelA.dilution_toKeep <- gelA.dilution_toKeep[order(gelA.dilution_toKeep$Rank.Analysis),]
   
   return(gelA.dilution_toKeep)
+  
+  }
 })
 
 gelA.dilution_toKeep.C <- reactive({
+  
+  if(!is.null(resultMatrix()) & !is.null(input$GelA.tokeep.C)) {
   
   toConsider <-lapply(1:length(input$GelA.tokeep.C), function(x) {
       which(gelA.table.dilution()$Box.position == input$GelA.tokeep.C[x])
@@ -1740,6 +2036,8 @@ gelA.dilution_toKeep.C <- reactive({
   gelA.dilution_toKeep <- gelA.dilution_toKeep[order(gelA.dilution_toKeep$Rank.Analysis),]
   
   return(gelA.dilution_toKeep)
+  
+  }
 })
 
 output$GelA.tokeep.C <- renderUI({
@@ -1754,36 +2052,56 @@ output$GelA.tokeep.C <- renderUI({
 })
 
 model.15N <- reactive({
+  
+  if(!is.null(gelA.dilution_toKeep.N())) {
+  
   model.d15N <- lm(gelA.dilution_toKeep.N()$d14N.d15N.BlankCorrected ~ gelA.dilution_toKeep.N()$Rank.Analysis)
   Intercept.N <- summary(model.d15N)$coefficients[1]
   Slope.N <- summary(model.d15N)$coefficients[2]
   return(c(Intercept.N, Slope.N))
+    
+  }
 })
 
 model.13C <- reactive({
+  
+  if(!is.null(gelA.dilution_toKeep.C())) {
+    
   model.d13C <- lm(gelA.dilution_toKeep.C()$d12C.d13C.BlankCorrected ~ gelA.dilution_toKeep.C()$Rank.Analysis)
   Intercept.C <- summary(model.d13C)$coefficients[1]
   Slope.C <- summary(model.d13C)$coefficients[2]
   return(c(Intercept.C, Slope.C))
+  
+  }
 })
 
 output$linearRegression.N <- renderPlot({
   
+  if(!is.null(gelA.dilution_toKeep.N())) {
+  
     plot(gelA.dilution_toKeep.N()$d14N.d15N.BlankCorrected ~ gelA.dilution_toKeep.N()$Rank.Analysis, ylab = "d14N.d15N.BlankCorrected", xlab = "Rank.Analysis")
     text(gelA.dilution_toKeep.N()$Rank.Analysis, gelA.dilution_toKeep.N()$d14N.d15N.BlankCorrected, labels=gelA.dilution_toKeep.N()$Box.position, cex= 0.7, pos=4)
     abline(model.15N()[1], model.15N()[2], col = 'red')
+    
+  }
   
 })
 
 output$linearRegression.C <- renderPlot({
   
+  if(!is.null(gelA.dilution_toKeep.C())) {
+  
     plot(gelA.dilution_toKeep.C()$d12C.d13C.BlankCorrected ~ gelA.dilution_toKeep.C()$Rank.Analysis, ylab = "d12C.d13C.BlankCorrected", xlab = "Rank.Analysis")
     text(gelA.dilution_toKeep.C()$Rank.Analysis, gelA.dilution_toKeep.C()$d12C.d13C.BlankCorrected, labels=gelA.dilution_toKeep.C()$Box.position, cex= 0.7, pos=4)
     abline(model.13C()[1], model.13C()[2], col = 'red')
+    
+  }
 
 })
 
 table2.sample.Peter <- reactive({
+  
+  if(!is.null(model.15N()) & !is.null(model.13C())) {
   
   table2.sample.Peter <- table2.sample()
   
@@ -1796,26 +2114,177 @@ table2.sample.Peter <- reactive({
   table2.sample.Peter$Normalized.d12C.d13C <- Norm.d13C
   
   return(table2.sample.Peter)
+    
+  }
 })
 
 output$modelN <- renderText({
+  
+  if(!is.null(model.15N()) & !is.null(model.13C())) {
+  
     paste("For N, the parameters of the model: intercept = ", round(model.15N()[1],10), " and slope = ", round(model.15N()[2], 10))
+    
+  }
 })
 
 output$modelC <- renderText({
+  
+   if(!is.null(model.15N()) & !is.null(model.13C())) {
+  
   paste("For C, the parameters of the model: intercept = ", round(model.13C()[1],10), " and slope = ", round(model.13C()[2], 10))
+     
+   }
 })
 
 output$FinalTable <- renderDT({
   
-  if(input$nameSession == "Name of the session") {
+  if(!is.null(table2.sample.Peter())) {
+      if(input$nameSession == "Name of the session") {
     toAdd <- ""
   } else {
     toAdd <- input$nameSession
   }
-  
-  write.csv(table2.sample.Peter(), file = paste0("table2.sample.Peter_",toAdd, ".csv" ))
+    
+    table0 <- matrix("", 20, 2)
+     
+table0[,1] <- c("Total C and D Isotope Analysis", 
+                "", 
+                "1. Session settings",
+                "Date", 
+                "Samples", 
+                "Responsible", 
+                "Lab. Temp", 
+                "System", 
+                "Column", 
+                "Temp, Owen", 
+                "Carrier gas", 
+                "Carrier flow", 
+                "Reference gas1",
+                "Reference flow", 
+                "Reference gas2",
+                "Reference flow", 
+                "Method", 
+                "", "",
+                "2. Blank corrected delta values for isotope standards"
+)
+table0[,2] <- c("", 
+                "", 
+                "", 
+                input$dateProcessig, 
+                input$SampleName, 
+                input$Responsible, 
+                input$Temperature, 
+                input$system, 
+                input$Column, 
+                input$temp.Owen, 
+                input$carrier.Gas, 
+                input$carrier.flow, 
+                input$Reference.gas1,
+                input$Reference.flow1, 
+                input$Reference.gas2,
+                input$Reference.flow2, 
+                input$Method, 
+                "", "", 
+                ""
+)
+table1_new <- table1()
+
+lapply(2:ncol(table1_new), function(x) {
+  table1_new[3:nrow(table1_new),x] <- as.numeric(as.character(table1_new[3:nrow(table1_new), x]))
+})
+table1_new[1:2,1] <- c("Isotope", "Standard")
+
+
+table2.standard_new <- table2.standard()
+lapply(5:ncol(table2.standard_new), function(x) {
+  table2.standard_new[1:nrow(table2.standard_new), x] <- as.numeric(as.character(table2.standard_new[1:nrow(table2.standard_new), x]))
+})
+
+table2.sample.Peter_new <- table2.sample.Peter()
+lapply(5:ncol(table2.sample.Peter_new), function(x) {
+  table2.sample.Peter_new[1:nrow(table2.sample.Peter_new), x] <- as.numeric(as.character(table2.sample.Peter_new[1:nrow(table2.sample.Peter_new), x]))
+})
+
+table.Interm1 <- matrix("3. Blank correction of delta value in standards", ncol = 1, nrow = 1)
+table.Interm2 <- matrix("4. Results from samples", ncol = 1, nrow = 1)
+
+normStyle <- createStyle(valign = "center", halign = "center", numFmt = "0.00")
+GeneraltitleStyle <- createStyle(valign = "center", halign = "center", fontSize = 14, textDecoration = "bold")
+titleStyle <- createStyle(valign = "center", halign = "left", fontSize = 14, textDecoration = "bold")
+tableStyle <- createStyle(borderStyle = "thin", border = "TopBottomLeftRight")
+
+colorBlue <- createStyle(fgFill = "#99ccff")
+colorGreen <- createStyle(fgFill = "#00ff00")
+
+wb <- createWorkbook("Example.xlsx")
+
+addWorksheet(wb, "CNEA_data")
+writeData(wb, sheet = 1, CNEA(), colNames = T)
+
+addWorksheet(wb, "isotope_data")
+
+writeData(wb, sheet = 2, table0, colNames = FALSE)
+writeData(wb, sheet = 2, table1_new, startRow = nrow(table0) + 1, colNames = F)
+writeData(wb, sheet = 2, table.Interm1, startRow = nrow(table0) + nrow(table1_new) + 3, colNames = F)
+writeData(wb, sheet = 2, table2.standard_new, startRow = nrow(table0) + nrow(table1_new) + 4, colNames = T)
+writeData(wb, sheet = 2, table.Interm2, startRow = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 7, colNames = F)
+writeData(wb, sheet = 2, table2.sample.Peter_new, startRow = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 8, colNames = T)
+
+
+nbRow_FinalTable <- nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + nrow(table2.sample.Peter_new) + 8
+
+lapply(1:17, function(x) {
+  addStyle(wb, sheet = 2, normStyle, cols = x, rows = 1:nbRow_FinalTable)
+})
+
+addStyle(wb, sheet = 2, GeneraltitleStyle, rows = 1, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = 20, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = nrow(table0) + nrow(table1_new) + 3, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 7, cols = 1, stack = T)
+
+table1_end <- nrow(table0) + nrow(table1_new)
+
+lapply(1:5, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, cols = x, rows = 21:table1_end, stack = T)
+})
+
+table2_stand_begin <- nrow(table0) + nrow(table1_new) + 4
+table2_stand_end <- nrow(table0) + nrow(table1_new) + 4 + nrow(table2.standard_new)
+
+lapply(1:16, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, rows = table2_stand_begin:table2_stand_end, cols = x, stack = T)
+})
+
+addStyle(wb, sheet = 2, colorBlue, cols = 8, rows = table2_stand_begin:table2_stand_end, stack = T)
+addStyle(wb, sheet = 2, colorBlue, cols = 15, rows = table2_stand_begin:table2_stand_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 9, rows = table2_stand_begin:table2_stand_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 16, rows = table2_stand_begin:table2_stand_end, stack = T)
+
+table2_sample_begin <- nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 8
+table2_sample_end <-  nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 8 + nrow(table2.sample.Peter_new)
+
+lapply(1:17, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, rows = table2_sample_begin:table2_sample_end, cols = x, stack = T)
+})
+
+addStyle(wb, sheet = 2, colorBlue, cols = 9, rows = table2_sample_begin:table2_sample_end, stack = T)
+addStyle(wb, sheet = 2, colorBlue, cols = 16, rows = table2_sample_begin:table2_sample_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 10, rows = table2_sample_begin:table2_sample_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 17, rows = table2_sample_begin:table2_sample_end, stack = T)
+
+mergeCells(wb, sheet = 2, cols = 1:18, rows = 1)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = 20)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + nrow(table1_new) + 3)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + nrow(table1_new) + nrow(table2.standard_new) + 7)
+
+mergeCells(wb, sheet = 2, cols = 2:3, rows = 21)
+mergeCells(wb, sheet = 2, cols = 4:5, rows = 21)
+
+
+saveWorkbook(wb, file = paste0("table2.sample.Peter_",toAdd, ".xlsx" ), overwrite = TRUE)
+
   table2.sample.Peter()
+  }
 })
 ```
 
@@ -1844,7 +2313,6 @@ output$FinalTable <- renderDT({
 ### Data exploration
 
 ```{r}
-
 radioButtons("tableChosen",
              label = "Choose the table that you want to explore",
              choices = c("Karina's procedure Table", "Peter's procedure Table"),
@@ -1853,14 +2321,24 @@ radioButtons("tableChosen",
 
 dataToExplore <- reactive({
   if(input$tableChosen == "Karina's procedure Table") {
-    output <- table2.sample.Karina()
+    
+    if(!is.null(table2.sample.Karina())) {
+      output <- table2.sample.Karina()
+    } else {NULL}
+    
   } else {
-    output <- table2.sample.Peter()
+    
+    if(!is.null(table2.sample.Peter())) {
+      
+      output <- table2.sample.Peter()
+    } else {}
   }
 })
 
 output$pivot <- renderRpivotTable({
-  rpivotTable(dataToExplore(),width="100%", height="400px")
+  if(!is.null(dataToExplore())) {
+    rpivotTable(dataToExplore(),width="100%", height="400px")
+  } else {}
 })
 
 ```

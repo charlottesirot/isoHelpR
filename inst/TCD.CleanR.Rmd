@@ -888,6 +888,68 @@ output$boxplot <- renderPlot({
 
 ------------------------------------------------------------------------------------------------------------------------------
 
+### Conclusions of the cleaning
+
+```{r}
+finalConclusion <- reactive({
+
+  if(!is.null(resultMatrix())) {
+
+  error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
+  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
+
+  error.nbNA <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.NA != 1)]
+  
+  TCD.liste <- split(TCD(), TCD()$Identifier.1)
+
+  TCD.liste <- TCD.liste[which(names(TCD.liste) != "")]
+
+  sucrose <- names(TCD.liste)[str_detect(names(TCD.liste), "ucrose")]
+
+  error.nbValue <- resultMatrix()$FirstLine[which((resultMatrix()$Identifier.1 ==  sucrose & resultMatrix()$NbValues != 1) | (resultMatrix()$Identifier.1 !=  sucrose & resultMatrix()$NbValues != 2))]
+  
+  if(!is.null(Data_plus_weight())) {
+    
+      if(length(bad.Id1()) != 0 | length(error_id.2) != 0 | length(error.id2.sample) != 0 | Data_plus_weight()[[1]][1] != 0 | length(error.nbNA) != 0 | length(error.nbValue) != 0) {
+    return(TRUE)
+  } else {return(FALSE)}
+    
+  } else {return(TRUE)}
+
+  } else {return(TRUE)}
+
+
+})
+
+output$finalConclusion_error <- renderText({
+  if(!is.null(resultMatrix())) {
+
+  if(finalConclusion() == TRUE) {
+    "There is at least one mistake in your files. <br> Please correct according to previously before continuing to read this file."
+  } else {NULL}
+
+  } else {NULL}
+})
+
+output$finalConclusion_OK <- renderText({
+
+  if(!is.null(resultMatrix())) {
+    
+    if(finalConclusion() == FALSE) {
+    "It seems that your files are correct."
+    } else {NULL}
+  } else {NULL}
+  
+})
+
+
+```
+`r textOutput("finalConclusion_OK")`
+**`r span(htmlOutput("finalConclusion_error"), style="color:red")`**
+<br>
+
+------------------------------------------------------------------------------------------------------------------------------
+
 ### Settings for "Quant.file" creation
 **WARNING:** Before continuing in this file, please check the conditions above do **NOT** contain any error in required **CONCLUSIONS** (this task may require several run of utilisation of the function TCD_cleanR). If the TCD file is upload without this last verification, Quant.CreatR **CANNOT** garantee the validity of the following data.
 <br><br>
@@ -1179,8 +1241,112 @@ output$tableSample.ToDisplay <- renderDT({
   } else {
     toAdd <- input$nameSession
   }
-  
-  write.csv(finalTable.Sample(), file = paste0("finalTable.Sample_",toAdd, ".csv" ))
+    
+  table0 <- matrix("", 24, 2)
+     
+table0[,1] <- c("Total C and D Quantification Analysis", 
+                "", 
+                "1. Session settings",
+                "Date", 
+                "Samples", 
+                "Responsible", 
+                "Lab. Temp", 
+                "System", 
+                "Column", 
+                "Temp, Owen", 
+                "Carrier gas", 
+                "Carrier flow", 
+                "Reference gas1",
+                "Reference flow", 
+                "Reference gas2",
+                "Reference flow", 
+                "Method", 
+                "Content of N in Gel A house standard",
+                "Content of C in Gel A house standard",
+                "N background value for Area.Flash.TCD.N",
+                "C background value for Area.Flash.TCD.C", 
+                "", "",
+                "2. GelA table"
+)
+table0[,2] <- c("", 
+                "", 
+                "", 
+                input$dateProcessig, 
+                input$SampleName, 
+                input$Responsible, 
+                input$Temperature, 
+                input$system, 
+                input$Column, 
+                input$temp.Owen, 
+                input$carrier.Gas, 
+                input$carrier.flow, 
+                input$Reference.gas1,
+                input$Reference.flow1, 
+                input$Reference.gas2,
+                input$Reference.flow2, 
+                input$Method, 
+                input$N.gelA,
+                input$C.gelA,
+                input$N.background,
+                input$C.background,
+                "", "", 
+                ""
+)  
+
+normStyle <- createStyle(valign = "center", halign = "center", numFmt = "0.00")
+GeneraltitleStyle <- createStyle(valign = "center", halign = "center", fontSize = 14, textDecoration = "bold")
+titleStyle <- createStyle(valign = "center", halign = "left", fontSize = 14, textDecoration = "bold")
+tableStyle <- createStyle(borderStyle = "thin", border = "TopBottomLeftRight")
+colorPurple <- createStyle(fgFill = "#800080")
+colorGreen <- createStyle(fgFill = "#99cc00")
+
+table.Interm1 <- matrix("3. General Table", ncol = 1, nrow = 1)
+
+wb <- createWorkbook("Example.xlsx")
+
+addWorksheet(wb, "TCD_data")
+writeData(wb, sheet = 1, TCD(), colNames = T)
+
+addWorksheet(wb, "quantification_data")
+
+writeData(wb, sheet = 2, table0, colNames = FALSE)
+writeData(wb, sheet = 2, GelA.table(), startRow = nrow(table0) + 1, colNames = T)
+writeData(wb, sheet = 2, table.Interm1, startRow = nrow(table0) + 4 + nrow(GelA.table()), colNames = F)
+writeData(wb, sheet = 2, finalTable.Sample(), startRow = nrow(table0) + 5 + nrow(GelA.table()), colNames = T)
+
+nbRow_FinalTable <- nrow(table0) + 5 + nrow(GelA.table()) + nrow(finalTable.Sample())
+
+lapply(1:14, function(x) {
+  addStyle(wb, sheet = 2, normStyle, cols = x, rows = 1:nbRow_FinalTable)
+})
+
+lapply(1:11, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, cols = x, rows = 25:(25+nrow(GelA.table())), stack = T)
+})
+
+finalTable_begin <- nrow(table0) + 5 + nrow(GelA.table())
+finalTable_end <- nrow(table0) + 5 + nrow(GelA.table()) + nrow(finalTable.Sample())
+
+lapply(1:14, function(x) {
+  addStyle(wb, sheet = 2, tableStyle, cols = x, rows = finalTable_begin:finalTable_end, stack = T)
+})
+
+addStyle(wb, sheet = 2, GeneraltitleStyle, rows = 1, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = 3, cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = nrow(table0), cols = 1, stack = T)
+addStyle(wb, sheet = 2, titleStyle, rows = nrow(table0) + 4 + nrow(GelA.table()), cols = 1, stack = T)
+
+addStyle(wb, sheet = 2, colorPurple, cols = 12, rows = finalTable_begin:finalTable_end, stack = T)
+addStyle(wb, sheet = 2, colorPurple, cols = 13, rows = finalTable_begin:finalTable_end, stack = T)
+addStyle(wb, sheet = 2, colorGreen, cols = 14, rows = finalTable_begin:finalTable_end, stack = T)
+
+mergeCells(wb, sheet = 2, cols = 1:18, rows = 1)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = 3)
+mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0))
+mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + 4 + nrow(GelA.table()))
+
+saveWorkbook(wb, file = paste0("finalTable.Sample_",toAdd, ".xlsx" ), overwrite = TRUE)
+
   return(finalTable.Sample())
   
   } else {}

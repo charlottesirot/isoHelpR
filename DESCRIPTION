@@ -5,6 +5,6 @@ Version: 0.1.1
 Author: Charlotte Sirot
 Maintainer: Charlotte Sirot <charlott.sirot@gmail.com>
 Description: This package aims to help the user of ICP-MS for 1/ checking the validity of the TCD and CNEA file and to 2/ to create both the "quant" file and the signature file. Tothis end, isoHelpR creates RMardown reports as well as create the required tables.
-Depends: gdata, DT, shiny, devtools, rmarkdown, pracma, tcltk2, knitr,stringr, TeachingDemos, rpivotTable
+Depends: gdata, DT, shiny, devtools, rmarkdown, pracma, tcltk2, knitr,stringr, TeachingDemos, rpivotTable, openxlsx
 Encoding: UTF-8
 LazyData: true
