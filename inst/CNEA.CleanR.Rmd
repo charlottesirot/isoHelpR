@@ -10,6 +10,39 @@ runtime: shiny
 
 
 ```{r include=FALSE, cache=FALSE}
+#remove leading and trailing space
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+
+# Returns the indices in the vector that correspond to integer or floating point
+getNumericIndices <- function(vect) {
+ return(grep("^[+-]?([0-9]*[.])?[0-9]+$", vect, value = FALSE))
+}
+
+containsCharacter <- function(vect) {
+  numIndices <- getNumericIndices(vect)
+  result = c()
+  
+  if(length(numIndices) == 0) {return(result)}
+  for(i in 1:length(vect)){
+    printDebug(trim(vect[i]))
+    if(!is.na(trim(vect[i]))){
+      if(!is.element(i, numIndices) && trim(vect[i]) != ""){
+      result <- c(result, i)
+      }
+    }
+  }
+  
+   
+  return(result)
+}
+
+# Debug output function
+DEBUG_FILE = "/home/cha/debug.log"
+printDebug <- function(message){
+  write(paste("[", Sys.time(), "] ", message),file=DEBUG_FILE,append=TRUE)
+  #write(message,file=DEBUG_FILE,append=TRUE)
+}
+
 # function to ask for the background values
 is.null.vector <- function(x) {
   sapply(x, is.null)
@@ -40,7 +73,18 @@ separateAnalysis_CNEA <- function(data, column1, column2) {
   
   return(toReturn)
 }
-
+is.numeric_cha <- function(x) {
+  sapply(1:length(x), function(i) {
+    
+    if(is.null(x[i])) {return(F)}
+    
+    toTest <- as.numeric(as.character(x[i]))
+    
+    if(!is.na(toTest) & is.numeric(toTest)) {
+      return(T)
+    } else {F}
+  })
+}
 successiveValues = function(vect) {
                           
                           if(length(vect) != 1) {
@@ -290,12 +334,12 @@ boxplot.with.outlier.label <- function(y, label_name, ..., spread_text = T, data
                           invisible(list(boxdata = boxdata, boxdata_outlier_df = boxdata_outlier_df, outlier_df=outlier_df))
                         }
 
-complementVector = function(VectR, x) {
-                          
+complementVector = function(VectR, x) {                      
+  
                           length.VectR <- length(VectR)
                           length.x <- length(x)
                           
-                          y <- vector() #output
+                          y <- vector() #output   
                           
                           for(i in 1:length.VectR) {
                             
@@ -304,7 +348,6 @@ complementVector = function(VectR, x) {
                             } else {}
                             
                           }
-                          
                           return(VectR[y])
                           
                         }
@@ -346,7 +389,196 @@ max.list = function(liste) {
                           }
                           
                           return(max.list)
-                        }
+}
+### Global Variables
+COL_NAMES <- c("FirstRow", "Identifier.1", "Identifier.2", 
+               "hasCorrectPattern", "d13ValIndex", "exportd13", "d15ValIndex", "exportd15", "hasOneVald15", "hasOneVald13", 
+               "hasnoNAInDilution", "hasTwoValInDilution", "hasZeroInDilution", "dilFact",
+               "hasNAinAreaAll", "exportAread15", "exportAread13")
+
+### check the equality of values even if there is an NA
+equals <- function(x, y) {
+  if(is.na(x) && is.na(y)) {return(TRUE)}
+  if(is.na(x) || is.na(y)) {return(FALSE)}
+  return (x == y)
+}
+
+### checks whether a vector contains NA
+containsNA <- function(vect) {
+  for(i in 1:length(vect)) {
+    if(is.na(vect[i])) {
+      return(TRUE)
+    }
+  }
+  return(FALSE)
+}
+
+### appends a value to an existing list
+appendToList <- function(li, val) {
+  lenLi <- length(li)
+  li[[lenLi + 1]] <- val
+  return(li)
+}
+
+processBlock <- function(block) {
+
+  # processResultRow will contain information to build result matrix
+  resultRow <- c(block$Rank.Analysis[1], block$Identifier.1[1], block$Identifier.2[1])
+
+  # add the relevant informations regarding the Isotope columns
+  resultRow <- processIsotopeCols(block, resultRow)
+  
+  # add the relevant informations regarding dilution column
+  resultRow <- processDilutionCol(block, resultRow)
+
+  # add the relevant informations regarding the Area.all column
+  resultRow <- processAreaAllCol(block, resultRow)
+
+  #give names to the resultRow
+  names(resultRow) <- COL_NAMES
+
+  return(resultRow)
+}
+
+processDilutionCol <- function(block, resultRow) {
+
+  # Check whether dilution column in block contains NA
+  # Instructions to Minus: we have a function for that!!
+  hasNoNA <- !containsNA(block$Sample.Dilution)
+
+  # Check that there are only two distinct values
+  # Instructions to Minus: We will use unique
+  distVal <- unique(block$Sample.Dilution)
+  lenDisVal <- length(distVal)
+
+  hasTwoVal <- (lenDisVal == 2)
+  
+  # Check that one of the values is 0
+  # Instructions to Minus: Use is.element to check for 0
+  hasZero <- is.element(0, block$Sample.Dilution)
+  
+  # Add column with (some) dilution value
+  # Instructions to Minus: I love you
+  dilFact <- block$Sample.Dilution[as.numeric(as.character(resultRow["d13ValIndex"]))]
+  print("######")
+  print(block$Sample.Dilution)
+  print(as.numeric(as.character(resultRow["d13ValIndex"])))
+  print(block$Sample.Dilution[as.numeric(as.character(resultRow["d13ValIndex"]))])
+  print("######")
+  # add column to the resultRow
+  resultRow <- c(resultRow, hasNoNA, hasTwoVal, hasZero, dilFact)
+
+  return(resultRow)
+}
+
+processIsotopeCols <- function(block, resultRow) {
+
+  # Check value distribution pattern (NA at correct places and correct number of rows)
+  # Instructions to Minus: This will add column/value to resultRow that says TRUE/FALSE whether pattern correct
+
+  d13Col <- block$d.13C.12C
+  d15Col <- block$d.15N.14N
+
+  hasCorrectPattern <- TRUE
+  if(block$Identifier.1[1] == "sucrose") {
+
+    if(nrow(block) != 5) {
+      hasCorrectPattern <- FALSE
+    }
+    if(!is.na(d13Col[1]) || !is.na(d13Col[2]) || !is.na(d13Col[3]) || is.na(d13Col[4]) || is.na(d13Col[5])) {
+      hasCorrectPattern <- FALSE
+    }
+    if(is.na(d15Col[1]) || is.na(d15Col[2]) || is.na(d15Col[3]) || !is.na(d15Col[4]) || !is.na(d15Col[5])) {
+      hasCorrectPattern <- FALSE
+    }
+  } else {
+    if(nrow(block) != 6) {
+      hasCorrectPattern <- FALSE
+    }
+    if(!is.na(d13Col[1]) || !is.na(d13Col[2]) || !is.na(d13Col[3]) || !is.na(d13Col[4]) || is.na(d13Col[5]) || is.na(d13Col[6])) {
+      hasCorrectPattern <- FALSE
+    }
+    if(is.na(d15Col[1]) || is.na(d15Col[2]) || is.na(d15Col[3]) || is.na(d15Col[4]) || !is.na(d15Col[5]) || !is.na(d15Col[6])) {
+      hasCorrectPattern <- FALSE
+    }
+  }
+
+
+  # Extract isotope value and corresponding row
+  d13ValIndex <- findFirstNotNAValIndex(d13Col)
+  if(is.na(d13ValIndex)){
+    exportd13 <- NA
+  } else {
+    exportd13 <- d13Col[d13ValIndex]
+  }
+
+  d15ValIndex <- findLastNotNAValIndex(d15Col)
+  if(is.na(d15ValIndex)){
+    exportd15 <- NA
+  } else {
+    exportd15 <- d15Col[d15ValIndex]
+  }
+
+  # check that d15Col and d13Col has at least one value
+  hasOneVald15 <- !is.na(exportd15)
+  hasOneVald13 <- !is.na(exportd13)
+
+  resultRow <- c(resultRow, hasCorrectPattern, d13ValIndex, exportd13, d15ValIndex, exportd15, hasOneVald15, hasOneVald13)
+  
+  names(resultRow) <- c("Rank", "Id1", "Id2", "hasCorrectPattern","d13ValIndex", "exportd13", "d15ValIndex", "exportd15", "hasOneVald15", "hasOneVald13")
+  
+  return(resultRow) #TODO
+}
+
+processAreaAllCol <- function(block, resultRow) {
+
+  # Check that column does not contain NA
+  hasNA <- containsNA(block$Area.All)
+
+  # Extract the two values that you need
+  d15Index <- as.numeric(resultRow[7])
+  d13Index <- as.numeric(resultRow[5])
+
+  exportAread15 <- block$Area.All[d15Index]
+  exportAread13 <- block$Area.All[d13Index]
+
+  resultRow <- c(resultRow, hasNA, exportAread15, exportAread13)
+
+  return(resultRow) #TODO
+}
+
+findFirstNotNAValIndex <- function(vect) {
+  for(i in 1: length(vect)){
+    if(!is.na(vect[i])) {return(i)}
+  }
+  return(NA)
+}
+
+findLastNotNAValIndex <- function(vect){
+  for(i in length(vect) : 1){
+    if(!is.na(vect[i])) {return(i)}
+  }
+  return(NA)
+}
+
+createResultMatrix <- function(blockList) {
+
+  resultMatrix <- data.frame(matrix(ncol = length(COL_NAMES)))
+  colnames(resultMatrix) <- COL_NAMES
+
+  for(i in 1:length(blockList)) {
+    block <- blockList[[i]]
+    rowToAdd <- processBlock(block)
+    resultMatrix <- rbind(resultMatrix, rowToAdd)
+
+  }
+  
+  # Remove first row of matrix that just contains NA 
+  resultMatrix <- resultMatrix[-1,]
+  
+  return(resultMatrix)
+}
+
 ```
 <br><br>
 
@@ -393,7 +625,7 @@ output$selectSample <- renderUI({
   
   if(!is.null(input$CNEA)) {
   
-  level.identifier.1 <- levels(CNEA()$Identifier.1)
+  level.identifier.1 <- levels(as.factor(CNEA()$Identifier.1))
   
   div(column(12,
              br(),
@@ -415,18 +647,21 @@ output$selectSample <- renderUI({
 ```{r}
 CNEA <- reactive({
   if(!is.null(input$CNEA)) {
-    CNEA <- read.xls (input$CNEA$datapath, sheet = 1, header = TRUE)
+    CNEA <- read.xls (input$CNEA$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+    
+    CNEA[,2] <- tolower(CNEA[,2])
 
     Rank.Analysis <- 2: (nrow(CNEA)+ 1) # +1 to make the excel file correspond to the R file
 
     CNEA <- cbind(Rank.Analysis, CNEA)
 
-    bad.Id1 <- which(CNEA$Identifier.1 == "" | is.na(CNEA$Identifier.1) | is.null(CNEA$Identifier.1))
-
-    if(length(bad.Id1) != 0) {
-      CNEA <- CNEA[-bad.Id1, ]
-    } else {}
-
+    CNEA <- data.frame(CNEA, stringsAsFactors=FALSE)
+    
+    CNEA$Area.All <- as.numeric(as.character(CNEA$Area.All))
+    CNEA$d.13C.12C <- as.numeric(as.character(CNEA$d.13C.12C))
+    CNEA$d.15N.14N <- as.numeric(as.character(CNEA$d.15N.14N))
+    CNEA$Sample.Dilution <- as.numeric(as.character(CNEA$Sample.Dilution))
+    
     return(CNEA)
 
   }
@@ -434,8 +669,12 @@ CNEA <- reactive({
 
 weightData <- reactive({
   if(!is.null(input$weightData)) {
-    weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE)
+    weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
 
+    weightData <- as.data.frame(weightData)
+  
+    weightData$Measured.Weigth..mg. <- as.numeric(as.character(weightData$Measured.Weigth..mg.))
+    
     weightData$Box.pos <- as.character(weightData$Box.pos)
 
     return(weightData)
@@ -443,88 +682,107 @@ weightData <- reactive({
 })
 
 ############################
+## Condition 1: character value in the dilution, All.Area, d13c and d15N column
+############################
+
+output$character_Error <- renderText({
+
+  if(is.null(input$CNEA)){return(NULL)}
+  
+      CNEA <- read.xls (input$CNEA$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+     weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+      
+      errorChar_CNEA <-c(containsCharacter(CNEA$Area.All),  containsCharacter(CNEA$d.13C.12C), containsCharacter(CNEA$d.15N.14N), containsCharacter(CNEA$Sample.Dilution))
+      
+      errorChar_Weight <- containsCharacter(weightData$Measured.Weigth..mg.)
+      
+      
+
+  if(length(errorChar_CNEA) > 0) {
+    paste("Oups, there is a character string in your CNEA file. Check the line(s):", paste(CNEA()$Rank.Analysis[errorChar_CNEA], sep = " ", collapse = " "))
+  } else {
+  if(length(errorChar_Weight) > 0) {
+    paste("Oups, there is a character string in your Weight file. Check the line(s):", paste(errorChar_Weight, sep = " ", collapse = " "))
+  } else {}
+  }
+})
+
+output$character_OK <- renderText({
+
+  if(is.null(input$CNEA)){return(NULL)}
+
+
+        CNEA <- read.xls (input$CNEA$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+     weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+      
+      errorChar_CNEA <-c(containsCharacter(CNEA$Area.All),  containsCharacter(CNEA$d.13C.12C), containsCharacter(CNEA$d.15N.14N), containsCharacter(CNEA$Sample.Dilution))
+      
+      errorChar_Weight <- containsCharacter(weightData$Measured.Weigth..mg.)
+      
+        if(length(errorChar_CNEA) == 0 & length(errorChar_Weight) == 0) {
+    "Perfect!! There is no character in your files"
+  } else {}
+  
+})
+
+############################
 ## Condition 1: identifier.1
 ############################
 
-bad.Id1 <- reactive({
-
-  if(!is.null(input$CNEA)) {
-
-    CNEA <- read.xls (input$CNEA$datapath, sheet = 1, header = TRUE)
-
-    level.identifier.1 <- levels(CNEA$Identifier.1)
-
-    bad.Id1 <- which(CNEA$Identifier.1 == "" | is.na(CNEA$Identifier.1) | is.null(CNEA$Identifier.1))
-
-    return(bad.Id1)
-
-  } else {}
-})
-
 output$id1_Error <- renderText({
 
-  if(!is.null(input$CNEA)) {
+  if(is.null(input$CNEA)) {return(NULL)}
+    
+    bad.Id1 <- which(CNEA()$Identifier.1 == "" | is.na(CNEA()$Identifier.1) | is.null(CNEA()$Identifier.1))
 
-    if(length(bad.Id1()) != 0) {
+    if(length(bad.Id1) != 0) {
 
-      toDisplay.1 <- paste("Some identifier.1 are empty. Please remove the line:", paste(bad.Id1(), sep = " ", collapse = ""))
+      toDisplay.1 <- paste("Some identifier.1 are empty (DO NOT IGNORE!!). Please check the line:", paste(CNEA()$Rank.Analysis[bad.Id1], sep = " ", collapse = " "))
 
-    } else {NULL}
-
-  } else {}
+    }
 
 })
 
 output$id1_OK <- renderText({
 
-  if(!is.null(input$CNEA)) {
+  if(is.null(input$CNEA)) {return(NULL)}
+    
+  bad.Id1 <- which(CNEA()$Identifier.1 == "" | is.na(CNEA()$Identifier.1) | is.null(CNEA()$Identifier.1))
 
-  if(length(bad.Id1()) != 0) {NULL} else {
+  if(length(bad.Id1) != 0) {NULL} else {
     toDisplay.1 <- "No problem in the identifier.1"
   }
-  } else {}
+  
 })
 
 ############################
-## Condition 7: identifier.1
+## Condition 7: Any area should not be empty
 ############################
-
-error.area <- reactive({
-
-  if(!is.null(input$CNEA)) {
-
-    error.area <- which(is.null.vector(CNEA()$Area.All) | is.na(CNEA()$Area.All) | CNEA()$Area.All == "NA" | CNEA()$Area.All == "")
-
-    return(error.area)
-
-  } else {}
-})
 
 output$error.area_Error <- renderText({
 
-  if(!is.null(input$CNEA)) {
+  if(is.null(input$CNEA)) {return(NULL)}
+  
+  error.area <- which(resultMatrix()$hasNAinAreaAll)
 
-    if(length(error.area()) != 0) {
+  if(length(error.area) != 0) {
 
-      toDisplay.1 <- paste("Some Area are empty. Please remove the line:", paste(error.area(), sep = " ", collapse = ""))
+    toDisplay.1 <- paste("Some Area are empty. Please check the analysis beginning line(s):", paste(resultMatrix()$FirstRow[error.area], sep = " ", collapse = " "))
 
-    } else {NULL}
-
-  } else {}
+  } 
 
 })
 
 output$error.area_OK <- renderText({
 
-  if(!is.null(input$CNEA)) {
+  if(is.null(input$CNEA)) {return(NULL)}
+  
+  error.area <- which(resultMatrix()$hasNAinAreaAll)
 
-  if(length(error.area()) != 0) {
-    NULL
-    } else {
-      toDisplay.1 <- "No problem in the Area"
-    }
-    
-  } else {}
+  if(length(error.area) == 0) {
+    toDisplay.1 <- "No problem in the Area"
+  }
+  
 })
 
 ############################
@@ -532,137 +790,113 @@ output$error.area_OK <- renderText({
 ############################
 
 resultMatrix <- reactive({
-
-  if(!is.null(input$CNEA)){
-
-    CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
-
-    CNEA.liste <- CNEA.liste[which(names(CNEA.liste) != "")]
-
-    sample <- input$sample
-
-    resultMatrix <- matrix(NA,ncol = 13) #the matrix summurizing the number of values in the rArea
-
-    NbValue.C <- NULL #number of signature for C
-    NbValue.N <- NULL #number of signature for N
-
-    Nb.dilution <- NULL #nb of dilution
-    Nb.dilution.Diff0 <- NULL #nb dilution different of 0
+  if(is.null(input$CNEA)){return(NULL)}
     
-    error.id2 <- NULL # test that all the Identifier.2 are identicals
-    error.id2.sample <- NULL # test that all the sample have a not empty
+  blockList <- list()
+  currentBlock <- data.frame()
 
-    for(i in 1:length(CNEA.liste)) {
+  lastId <- c(CNEA()$Identifier.1[1], CNEA()$Identifier.2[1], CNEA()$Row[1])
 
-      dataProv <- CNEA.liste[[i]]
+  for(i in 1:nrow(CNEA())) {
 
-      Sep.Analysis <- separateAnalysis_CNEA(dataProv, column1 = dataProv$d.13C.12C, column2 = dataProv$d.15N.14N)
+    currentRow <- CNEA()[i,]
+    currentId <- c(CNEA()$Identifier.1[i], CNEA()$Identifier.2[i], CNEA()$Row[i])
 
-      number.Analysis <- length(Sep.Analysis)
+    # if row identifier changed, then we finished a block and start a new one
+    if(!equals(currentId[1], lastId[1]) || !equals(currentId[2], lastId[2]) || !equals(currentId[3], lastId[3])) {
+    # Add current block to blockList
+    blockList <- appendToList(blockList, currentBlock)
 
-      for(j in 1:number.Analysis) {
-        
-        One.Analysis <- as.data.frame(Sep.Analysis[[j]])
-        
-        if(length(unique(One.Analysis$Identifier.2)) == 1) {
-          error.id2 <- 0
-          } else {
-            error.id2 <- 1
-            } ### 0 = all the Identifier.2 are identicals, 1 = at least one line has a different Identifier.2
-        
-        cond <- sapply(1:length(sample), function(x) {length(which(names(CNEA.liste)[i] == sample[x]))})
-        
-        cond1 <- length(which(cond != 0)) # marker that it's a sample
-        
-        cond2 <-   length(which(is.null.vector(One.Analysis$Identifier.2) | is.na(One.Analysis$Identifier.2) | One.Analysis$Identifier.2 == "NA" | One.Analysis$Identifier.2 == ""))
-        
-        if(cond1 != 0 & cond2 != 0) {
-          error.id2.sample <- 1
-          } else {
-            error.id2.sample <- 0
-            } ### 0 = no sample id2 is empty, 1 = at least one line of the sample id2 is empty
-        
-
-        ### deal with dilution
-
-        dilution <- One.Analysis$Sample.Dilution
-
-        dilution.Diff0 <- dilution[which(dilution != 0)]
-
-        Nb.dilution <- length(unique(dilution.Diff0))
-
-        NbValue.C <- which(!is.na(One.Analysis$d.13C.12C) & !is.null(One.Analysis$d.13C.12C) & One.Analysis$d.13C.12C != "")
-        NbValue.N <- which(!is.na(One.Analysis$d.15N.14N) & !is.null(One.Analysis$d.15N.14N) & One.Analysis$d.15N.14N != "")
-
-        toAdd <- c(names(CNEA.liste)[i], as.character(One.Analysis$Identifier.2[1]), as.numeric(as.character(One.Analysis$Rank.Analysis[1])), error.id2, error.id2.sample,length(NbValue.C), length(NbValue.N), Nb.dilution, dilution.Diff0[1], One.Analysis$Area.All[NbValue.N[length(NbValue.N)]], One.Analysis$Area.All[NbValue.C[1]], One.Analysis$d.15N.14N[NbValue.N[length(NbValue.N)]], One.Analysis$d.13C.12C[NbValue.C[1]])
-        
-        resultMatrix <- rbind(resultMatrix, toAdd)
-      }
+    # Start a new empty block and add current row to it
+    currentBlock <- data.frame()
     }
 
-    resultMatrix <- resultMatrix[-1,]
-    colnames(resultMatrix) <- c("Identifier.1", "Identifier.2","FirstLine", "error.id2", "error.id2.sample","NbValue.C", "NbValue.N", "Nb.dilution", "Dilution", "Area.N", "Area.C","d15N", "d13C")
-    rownames(resultMatrix) <- 1:nrow(resultMatrix)
-    resultMatrix <- as.data.frame(resultMatrix)
+  # Add current row to current block
+  currentBlock <- rbind(currentBlock, currentRow)
 
-    for(i in 3:ncol(resultMatrix)){
-      resultMatrix[,i] <- as.numeric(as.character(resultMatrix[,i]))
-    }
+  if(i == nrow(CNEA())){blockList <- appendToList(blockList, currentBlock)}
+  
+  lastId <- currentId
+  }
 
-      resultMatrix <- resultMatrix[order(resultMatrix[,3]),]
-      
-      return(resultMatrix)
+resultMatrix <- createResultMatrix(blockList)
 
-  } else {}
+# toTransform in logical
+for(i in c(4,9:13,15)) {
+  resultMatrix[,i] <- as.logical(resultMatrix[,i])
+}
 
+    resultMatrix$exportAread15 <- as.numeric(as.character(resultMatrix$exportAread15))
+    resultMatrix$exportAread13 <- as.numeric(as.character(resultMatrix$exportAread13))
+    resultMatrix$exportd13 <- as.numeric(as.character(resultMatrix$exportd13))
+    resultMatrix$exportd15 <- as.numeric(as.character(resultMatrix$exportd15))
+     resultMatrix$dilFact <- as.numeric(as.character(resultMatrix$dilFact))
+
+return(resultMatrix)
 })
-
+    
 output$nbValue.C_Error <- renderText({
-  if(!is.null(input$CNEA)){
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
+  
+  errorC <- which(resultMatrix()$hasOneVald13 == F)
     
-    errorC <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C == 0)]
-    
-    if(length(errorC) != 0) {
-       paste("There is no value for C in the analysis. Please check the line(s)", paste(errorC, sep = " ", collapse = " "))
-    } else { NULL }
-    
-  } else {}
+  if(length(errorC) != 0) {
+      paste("There is no value for C in the analysis. Please check the analysis beginning line(s)", paste(resultMatrix()$FirstRow[errorC], sep = " ", collapse = " "))
+  } 
 })
 
 output$nbValue.C_OK <- renderText({
-  if(!is.null(input$CNEA)){
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
     
-    errorC <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C == 0)]
+    errorC <- which(resultMatrix()$hasOneVald13 == F)
     
     if(length(errorC) == 0) {
-       "There is at least one C signature for every analysis"
-    } else { NULL }
-    
-  } else {}
+       "There is at least one C signature for all analyses"
+    }
 })
 
 output$nbValue.N_Error <- renderText({
-  if(!is.null(input$CNEA)){
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
     
-    errorN <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N == 0)]
+  errorN <- which(resultMatrix()$hasOneVald15 == F)
     
     if(length(errorN) != 0) {
-       paste("There is no value for N in the analysis. Please check the line(s)", paste(errorN, sep = " ", collapse = " "))
-    } else { NULL }
-    
-  } else {}
+       paste("There is no value for N in the analysis. Please check the analysis beginning line(s)", paste(resultMatrix()$FirstRow[errorN], sep = " ", collapse = " "))
+    } 
 })
 
 output$nbValue.N_OK <- renderText({
-  if(!is.null(input$CNEA)){
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
     
-    errorN <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N == 0)]
+  errorN <- which(resultMatrix()$hasOneVald15 == F)
     
-    if(length(errorN) == 0) {
-       "There is at least one N signature for every analysis"
-    } else { NULL }
+  if(length(errorN) == 0) {
+      "There is at least one N signature for every analysis"
+  }
+})
+
+output$pattern_Error <- renderText({
+  
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
     
-  } else {}
+  errorPattern <- which(resultMatrix()$hasCorrectPattern == F)
+  
+  if(length(errorPattern) != 0) {
+      paste("There is a problem of pattern. Please check the analysis beginning line(s)", paste(resultMatrix()$FirstRow[errorPattern], sep = " ", collapse = " "))
+  } 
+  
+})
+
+output$pattern_OK <- renderText({
+  
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
+    
+  errorPattern <- which(resultMatrix()$hasCorrectPattern == F)
+  
+  if(length(errorPattern) == 0) {
+      paste("No problem in the pattern")
+  } 
+  
 })
 
 ############################
@@ -671,28 +905,31 @@ output$nbValue.N_OK <- renderText({
 
 dataTables <- reactive({
 
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & length(character()) ==0) {
 
     sample <- input$sample
 
     place <- NULL
 
     for(x in 1:length(sample)) {
-
+      
       if(x == 1) {
-        CNEA.sample <- resultMatrix()[which(resultMatrix()$Identifier.1 == sample[x]), ]
+        
         place <- which(resultMatrix()$Identifier.1 == sample[x])
+        CNEA.sample <- resultMatrix()[place, ]
+        
       } else {
-         CNEA.sample <- rbind(CNEA.sample, resultMatrix()[which(resultMatrix()$Identifier.1 == sample[x]), ])
         place <- c(place, which(resultMatrix()$Identifier.1 == sample[x]))
+        CNEA.sample <- rbind(CNEA.sample, resultMatrix()[which(resultMatrix()$Identifier.1 == sample[x]), ])
+        
       }
     }
-
+    
     place <- sort(place)
 
     PlaceBar <- complementVector(1:nrow(resultMatrix()), place)
 
-    CNEA.sample <- CNEA.sample[order(CNEA.sample$FirstLine),] # data with only the sample
+    CNEA.sample <- CNEA.sample[order(as.numeric(as.character(CNEA.sample$FirstRow))),] # data with only the sample
 
     CNEA.standard <- resultMatrix()[PlaceBar, ] # data with only the standards
 
@@ -701,11 +938,15 @@ dataTables <- reactive({
   } else {}
 })
 
+
+
 dataStandard <- reactive({
 
   if(!is.null(input$CNEA)) {
 
-   dataTables()[[2]]
+  temp <- dataTables()[[2]]
+
+   return(temp)
 
   } else {}
 })
@@ -714,7 +955,9 @@ dataSample <- reactive({
 
   if(!is.null(input$CNEA)) {
 
-   dataTables()[[1]]
+    temp <- dataTables()[[1]]
+
+    return(temp)
 
   } else {}
 })
@@ -723,7 +966,7 @@ output$dataSampleToPrint <- renderDT({
 
   if(!is.null(input$CNEA)) {
 
-    dataSample()[, c(1,2,3,9,10,11, 12,13)]
+    dataSample()
 
   } else {}
 })
@@ -732,63 +975,9 @@ output$dataStandardToPrint <- renderDT({
 
   if(!is.null(input$CNEA)) {
 
-    dataStandard()[, c(1,3,9,10,11, 12, 13)]
+    dataStandard()
 
   } else {}
-})
-
-output$error_id.2_Error <- renderText({
-
-  if(!is.null(input$CNEA)) {
-
-    error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
-
-    if(length(error_id.2) != 0) {
-    paste("Some analysis show different name in their identifier.2. Please check in the analysis line(s)", paste(error_id.2, sep = " ", collapse = " "))
-    } else {}
-
-  } else {}
-})
-
-output$error_id.2_OK <- renderText({
-
-  if(!is.null(input$CNEA)) {
-
-  error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
-
-  if(length(error_id.2) == 0) {
-    "All the identifier.2 values are identical within a single analysis"
-  } else {}
-
-  } else {}
-})
-
-output$error.id2.sample_Error <- renderText({
-
-  if(!is.null(input$CNEA)) {
-
-  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
-
-  if(length(error.id2.sample) != 0) {
-    paste("Some analysis show an empty identifier.2. Please check in the analysis line(s)", paste(error.id2.sample, sep = " ", collapse = " "))
-  } else {}
-
-  } else {}
-
-})
-
-output$error.id2.sample_OK <- renderText({
-
-  if(!is.null(input$CNEA)) {
-
-  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
-
-  if(length(error.id2.sample) == 0) {
-        "No identifier is empty in sample, great :)"
-  } else {}
-
-  } else {}
-
 })
 
 ############################
@@ -797,108 +986,25 @@ output$error.id2.sample_OK <- renderText({
 
 output$dilution_Error <- renderText({
   
-  if(!is.null(input$CNEA)){
-    
-    err <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.dilution != 1)]
-    
-    if(length(err) != 0) {
-      paste("There is a mistake in the dilution factor. Please check line(s)", paste(err, sep = "", collapse = " "))
-    } else {NULL}
-    
-  } else {}
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
+  
+  err <- which(resultMatrix()$hasnoNAInDilution == F | resultMatrix()$hasTwoValInDilution == F)
+  
+  if(length(err) != 0) {
+      paste("There is a mistake in the dilution factor. Please check the analysis beginning line(s)", paste(resultMatrix()$FirstRow[err], sep = "", collapse = " "))
+  } 
   
 })
 
 output$dilution_OK <- renderText({
   
-  if(!is.null(input$CNEA)){
+  if(is.null(input$CNEA) | length(character()) !=0){return(NULL)}
+  
+  err <- which(resultMatrix()$hasnoNAInDilution == F | resultMatrix()$hasTwoValInDilution == F)
     
-    err <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.dilution != 1)]
-    
-    if(length(err) == 0) {
+  if(length(err) == 0) {
       "Everything is ok regarding dilution"
-    } else {NULL}
-    
-  } else {}
-  
-})
-
-############################
-## Condition 5: secondary condition 
-############################
-
-output$Value.N.sec_Error <- renderText({
-  
-  if(!is.null(input$CNEA)){
-    
-    CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
-
-    CNEA.liste <- CNEA.liste[which(names(CNEA.liste) != "")]
-    
-    sucrose <- names(CNEA.liste)[str_detect(names(CNEA.liste), "ucrose")]
-    
-    errSucr <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 3 & resultMatrix()$Identifier.1 == sucrose)]
-    err <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 4 & resultMatrix()$Identifier.1 != sucrose)]
-    
-    E <- c(errSucr, err)
-    
-    if(length(E) != 0) {
-      paste("Some analysis showed unusual number of N signatures. Please check line(s)", paste(E, sep = "", collapse = " "))
-    } else {NULL}
-    
-  } else {}
-  
-})
-
-output$Value.N.sec_OK <- renderText({
-  
-  if(!is.null(input$CNEA)){
-    
-    CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
-
-    CNEA.liste <- CNEA.liste[which(names(CNEA.liste) != "")]
-    
-    sucrose <- names(CNEA.liste)[str_detect(names(CNEA.liste), "ucrose")]
-    
-    errSucr <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 3 & resultMatrix()$Identifier.1 == sucrose)]
-    err <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 4 & resultMatrix()$Identifier.1 != sucrose)]
-    
-    E <- c(errSucr, err)
-    
-    if(length(E) == 0) {
-      "The number of N signatures per analysis seems coherent"
-    } else {NULL}
-    
-  } else {}
-  
-})
-
-output$Value.C.sec_Error <- renderText({
-  
-  if(!is.null(input$CNEA)){
-    
-    err <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C != 2)]
-    
-    if(length(err) != 0) {
-      paste("Some analysis showed unusual number of C signatures. Please check line(s)", paste(err, sep = "", collapse = " "))
-    } else {NULL}
-    
-  } else {}
-  
-})
-
-output$Value.C.sec_OK <- renderText({
-  
-  if(!is.null(input$CNEA)){
-    
-    err <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C != 2)]
-    
-    if(length(err) == 0) {
-      "The number of C signatures per analysis seems coherent"
-    } else {NULL}
-    
-  } else {}
-  
+  } 
 })
 
 ############################
@@ -922,9 +1028,10 @@ Data_plus_weight <- reactive({ ## for pasting the weight of the sample
     errorToCount <- 1
   } else {
       for(i in 1:nRow.dataSample){
+        
         if(as.character(dataSample()$Identifier.2[i]) != as.character(weightData()$Box.pos[i])){
           errorToCount <- 1
-          line.flag <- dataSample()$Identifier.2[i]
+          line.flag <- c(line.flag, dataSample()$Identifier.2[i])
           } else {}
       }
       if(errorToCount == 0) {
@@ -975,44 +1082,35 @@ output$weight_OK <- renderText({
 
 ### Conditions tested for cleaning
 
-Necessary conditions (i.e. corrections **mandatory** for IsoSignature.creatR)
-
 1. Condition 1: Any identifier 1 should not be empty or null
 `r textOutput("id1_OK")`
 **`r textOutput("id1_Error")`**
 <br>
-2. Condition 2: One analysis (i.e. the ranks are following) must contain not empty Area.All cell. d13C/d12C and d15N/d14N should have each at least one value.
+2. Condition 2: Cells from Area, dilution, d15N and d13C columns should contain any character
+`r textOutput("character_OK")`
+**`r textOutput("character_Error")`**
+<br>
+3. Condition 3: One analysis (i.e. the ranks are following) must contain not empty Area.All cell. d13C/d12C and d15N/d14N should have each at least one value.
 `r textOutput("nbValue.C_OK")`
 **`r textOutput("nbValue.C_Error")`**
 `r textOutput("nbValue.N_OK")`
 **`r textOutput("nbValue.N_Error")`**
 <br>
-3. Condition 3: All identifier.2 of a single analysis should be not empty and identical (samples only)
-**`r textOutput("error_id.2_Error")`**
-`r textOutput("error_id.2_OK")`
-**`r textOutput("error.id2.sample_Error")`**
-`r textOutput("error.id2.sample_OK")`
+But also analysis should contain 4 signatures values (3 for the sucrose) for N and 2 for the carbone
+`r textOutput("pattern_OK")`
+**`r textOutput("pattern_Error")`**
 <br>
-4. Condition 4. Identifier.2 for weight and CNEA file should be in the same order (for sample only)
+5. Condition 5. Identifier.2 for weight and CNEA file should be in the same order (for sample only)
 **`r textOutput("weight_Error")`**
 `r textOutput("weight_OK")` 
 <br>
-4. Condition 5. No Area.All should be empty
+6. Condition 6. No Area.All should be empty
 **`r textOutput("error.area_Error")`**
 `r textOutput("error.area_OK")`
 <br>
-
-Secondary conditions (i.e. corrections are not mandatory, CNEA.CleanR just mentionned them to warn user)
-
-1. Analysis should have exactly one dilution value
+7. Condition 7: Analysis should have exactly one dilution value
 `r textOutput("dilution_OK")`
 **`r textOutput("dilution_Error")`**
-<br>
-2. Analysis should contain 4 signatures values (3 for the sucrose) for N and 2 for the carbone
-`r textOutput("Value.N.sec_OK")`
-**`r textOutput("Value.N.sec_Error")`**
-`r textOutput("Value.C.sec_OK")`
-**`r textOutput("Value.C.sec_Error")`**
 <br><br>  
 
 #### **Data Samples:**
@@ -1032,7 +1130,7 @@ Secondary conditions (i.e. corrections are not mandatory, CNEA.CleanR just menti
 output$forBoxPlot <- renderUI({
   if(!is.null(input$CNEA)) {
 
- level.identifier.1 <- levels(CNEA()$Identifier.1)
+ level.identifier.1 <- levels(as.factor(CNEA()$Identifier.1))
 
  checkboxGroupInput("toDisplay", label = "",
     choices = level.identifier.1,
@@ -1045,7 +1143,7 @@ output$forBoxPlot <- renderUI({
 
 output$boxplot <- renderPlot({
 
-  if(!is.null(input$CNEA)) {
+  if(!is.null(input$CNEA) & length(character()) ==0) {
     
 
     toDisplay <- input$toDisplay
@@ -1061,16 +1159,16 @@ output$boxplot <- renderPlot({
 
     par(mfrow = c(1,2), mar = c(2,3,1.2,1.2))
 
-    ylim.C  <- c(min(dataTemp$d13C, na.rm = T) - abs(min(dataTemp$d13C, na.rm = T))*0.1, max(dataTemp$d13C, na.rm = T) + abs(max(dataTemp$d13C, na.rm = T))*0.1)
+    ylim.C  <- c(min(dataTemp$exportd13, na.rm = T) - abs(min(dataTemp$exportd13, na.rm = T))*0.1, max(dataTemp$exportd13, na.rm = T) + abs(max(dataTemp$exportd13, na.rm = T))*0.1)
 
-    boxplot.with.outlier.label(as.numeric(as.character(dataTemp$d13C)), label_name = dataTemp$Identifier.2, ylim = ylim.C, cex = 1.25)
+    boxplot.with.outlier.label(as.numeric(as.character(dataTemp$exportd13)), label_name = dataTemp$Identifier.2, ylim = ylim.C, cex = 1.25)
 
     mtext("d13C", side = 1)
 
-    ylim.N  <- c(min(dataTemp$d15N, na.rm = T) - abs(min(dataTemp$d15N, na.rm = T))*0.1, max(dataTemp$d15N, na.rm = T) + abs(max(dataTemp$d15N, na.rm = T))*0.1)
+    ylim.N  <- c(min(dataTemp$exportd15, na.rm = T) - abs(min(dataTemp$exportd15, na.rm = T))*0.1, max(dataTemp$exportd15, na.rm = T) + abs(max(dataTemp$exportd15, na.rm = T))*0.1)
 
 
-    boxplot.with.outlier.label(as.numeric(as.character(dataTemp$d15N)), label_name = dataTemp$Identifier.2, ylim = ylim.N, cex = 1.25)
+    boxplot.with.outlier.label(as.numeric(as.character(dataTemp$exportd15)), label_name = dataTemp$Identifier.2, ylim = ylim.N, cex = 1.25)
 
     mtext("d15N", side = 1)
     
@@ -1090,37 +1188,26 @@ output$boxplot <- renderPlot({
 ```{r}
 finalConclusion <- reactive({
 
-  if(!is.null(resultMatrix())) {
-
-  errorC <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C == 0)]
-  errorN <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N == 0)]
-
-  error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
-  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
-
-  errDilution <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.dilution != 1)]
-
-  CNEA.liste <- split(CNEA(), CNEA()$Identifier.1)
-
-  CNEA.liste <- CNEA.liste[which(names(CNEA.liste) != "")]
-  sucrose <- names(CNEA.liste)[str_detect(names(CNEA.liste), "ucrose")]
-
-  errSucr <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 3 & resultMatrix()$Identifier.1 == sucrose)]
-  errSucr2 <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.N != 4 & resultMatrix()$Identifier.1 != sucrose)]
-
-  E <- c(errSucr, errSucr2)
-
-  errNbValueC <- resultMatrix()$FirstLine[which(resultMatrix()$NbValue.C != 2)]
+  if(!is.null(resultMatrix())) {return(TRUE)}
+  if(is.null(Data_plus_weight())) {return(TRUE)}
   
-  if(!is.null(Data_plus_weight())) {
-    
-      if(length(bad.Id1()) != 0 | length(error.area()) != 0 | length(errorC) != 0 | length(errorN) != 0 | length(error_id.2) != 0 | length(error.id2.sample) != 0 | length(errDilution) != 0 | length(E) != 0 | length(errNbValueC) != 0 | Data_plus_weight()[[1]][1] != 0) {
-    return(TRUE)
-  } else {return(FALSE)}
-    
-  } else {return(TRUE)}
-
-  } else {return(TRUE)}
+  bad.Id1 <- which(CNEA()$Identifier.1 == "" | is.na(CNEA()$Identifier.1) | is.null(CNEA()$Identifier.1))
+  error.area <- which(resultMatrix()$hasNAinAreaAll)
+  errorC <- which(resultMatrix()$hasOneVald13 == F)
+  errorN <- which(resultMatrix()$hasOneVald15 == F)
+  errorPattern <- which(resultMatrix()$hasCorrectPattern == F)
+  err <- which(resultMatrix()$hasnoNAInDilution == F & resultMatrix()$hasTwoValInDilution == T)
+  
+  if(length(character())!=0 | 
+         length(bad.Id1) != 0 | 
+         length(error.area) != 0 | 
+         length(errorC) != 0 | 
+         length(errorN) != 0 |
+         length(errorPattern) != 0 | 
+         length(err) != 0 | 
+         Data_plus_weight()[[1]][1] != 0) {
+        return(TRUE)
+      } else {return(FALSE)}
 
 
 })
@@ -1145,8 +1232,6 @@ output$finalConclusion_OK <- renderText({
   } else {NULL}
   
 })
-
-
 ```
 `r textOutput("finalConclusion_OK")`
 **`r span(htmlOutput("finalConclusion_error"), style="color:red")`**
@@ -1179,14 +1264,14 @@ output$info.2 <- renderUI({
   
   div(
     checkboxGroupInput("blank", label = p("1. Select blanks (blank AND system blank)"), 
-    choices = names(CNEA.liste),
-    selected = blank,
-    inline = T), 
+                       choices = names(CNEA.liste),
+                       selected = blank,
+                       inline = T), 
     br(),
     checkboxGroupInput("gelA", label = p("2. Select Gel A"), 
-    choices = levels(weightData()$Name),
-    selected = gelA,
-    inline =T),
+                       choices = levels(as.factor(weightData()$Name)),
+                       selected = gelA,
+                       inline =T),
      br(),
    tags$b("3. Background Values"),
     div(
@@ -1233,8 +1318,8 @@ output$chooseValue.C.stand <- renderUI({
       column(6, p(paste("Select the values that you want to keep for", resultMatrix()$Identifier.1[which(input$C.define[x] == resultMatrix()$Identifier.1)]))),
       column(6,
              checkboxGroupInput(nameInput.C()[x], label = p(""),
-                                choices = resultMatrix()$d13C[which(input$C.define[x] == resultMatrix()$Identifier.1)],
-                                selected = resultMatrix()$d13C[which(input$C.define[x] == resultMatrix()$Identifier.1)],
+                                choices = resultMatrix()$exportd13[which(input$C.define[x] == resultMatrix()$Identifier.1)],
+                                selected = resultMatrix()$exportd13[which(input$C.define[x] == resultMatrix()$Identifier.1)],
                                 inline = T),
              br()
     )
@@ -1361,8 +1446,8 @@ output$chooseValue.N.stand <- renderUI({
       column(6, p(paste("Select the values that you want to keep for", resultMatrix()$Identifier.1[which(input$N.define[x] == resultMatrix()$Identifier.1)]))),
       column(6,
              checkboxGroupInput(nameInput.N()[x], label = p(""),
-                                choices = resultMatrix()$d15N[which(input$N.define[x] == resultMatrix()$Identifier.1)],
-                                selected = resultMatrix()$d15N[which(input$N.define[x] == resultMatrix()$Identifier.1)],
+                                choices = resultMatrix()$exportd15[which(input$N.define[x] == resultMatrix()$Identifier.1)],
+                                selected = resultMatrix()$exportd15[which(input$N.define[x] == resultMatrix()$Identifier.1)],
                                 inline = T),
              br()
     )
@@ -1523,8 +1608,8 @@ for(i in 2:(length(input$C.define) + length(input$N.define) + 1)) {
   
   analysis <- as.numeric(as.character(table1[,i]))
   
-  table1[(nrow.table1-2),i] <- round(mean(analysis, na.rm = T), digits = 2)
-  table1[(nrow.table1-1),i] <- round(sd(analysis, na.rm = T), digits = 2)
+  table1[(nrow.table1-2),i] <- mean(analysis, na.rm = T)
+  table1[(nrow.table1-1),i] <- sd(analysis, na.rm = T)
 }
 
 table1[nrow.table1,(2:ncol.table1)] <- c(as.numeric(as.character(value.N.toTake())), as.numeric(as.character(value.C.toTake())))
@@ -1557,7 +1642,9 @@ output$table1.toDisplay <- renderDT({
 table2 <- reactive({
   
   if(!is.null(resultMatrix())) {
-    resultMatrix <- resultMatrix()[order(as.numeric(as.character(resultMatrix()$FirstLine))),]
+    resultMatrix <- resultMatrix()[order(as.numeric(as.character(resultMatrix()$FirstRow))),]
+    
+    
 
   line.sample  <- lapply(1:length(input$sample), function(x) {
     which(resultMatrix$Identifier.1 == input$sample [x])
@@ -1567,13 +1654,19 @@ table2 <- reactive({
 
   table2.sample.Temp <- resultMatrix[line.sample,]
 
-  table2.sample.Temp <- table2.sample.Temp[order(as.numeric(as.character(table2.sample.Temp$FirstLine))),]
+  table2.sample.Temp <- table2.sample.Temp[order(as.numeric(as.character(table2.sample.Temp$FirstRow))),]
+  
+  printDebug("########table table2.sample.Temp")
+  printDebug(table2.sample.Temp)
 
   line.standard <- complementVector(1:nrow(resultMatrix), line.sample)
 
   table2.standard.Temp <- resultMatrix[line.standard,]
 
-  table2.standard.Temp <- table2.standard.Temp[order(as.numeric(as.character(table2.standard.Temp$FirstLine))),]
+  table2.standard.Temp <- table2.standard.Temp[order(as.numeric(as.character(table2.standard.Temp$FirstRow))),]
+  
+  printDebug("########table table2.standard.Temp")
+  printDebug(table2.standard.Temp)
 
   # table2.standard final (i.e. with corrected value)
 
@@ -1585,11 +1678,11 @@ table2 <- reactive({
   table2.standard$Box.position <- " "
   
   table2.standard[,3] <- as.character(table2.standard.Temp$Identifier.1)
-  table2.standard[,5] <- as.numeric(as.character(table2.standard.Temp$Area.N))
-  table2.standard[,6] <- as.numeric(as.character(table2.standard.Temp$d15N))
-  table2.standard[,10] <- as.numeric(as.character(table2.standard.Temp$Dilution))
-  table2.standard[,11] <- as.numeric(as.character(table2.standard.Temp$Area.C))
-  table2.standard[,12] <- as.numeric(as.character(table2.standard.Temp$d13C))
+  table2.standard[,5] <- as.numeric(as.character(table2.standard.Temp$exportAread15))
+  table2.standard[,6] <- as.numeric(as.character(table2.standard.Temp$exportd15))
+  table2.standard[,10] <- as.numeric(as.character(table2.standard.Temp$dilFact))
+  table2.standard[,11] <- as.numeric(as.character(table2.standard.Temp$exportAread13))
+  table2.standard[,12] <- as.numeric(as.character(table2.standard.Temp$exportd13))
 
   blank.correction <- function(Area.blank, Sign.blank, Area.sample, Sign.sample) {
   value <- (Area.sample*Sign.sample - Area.blank*Sign.blank)/(Area.sample - Area.blank)
@@ -1648,11 +1741,11 @@ table2 <- reactive({
   table2.sample[,2] <- as.character(table2.sample.Temp$Identifier.2)
   table2.sample[,3] <- as.character(weightData()$Name)
   table2.sample[,4] <- as.numeric(as.character(weightData()$Measured.Weigth..mg.))
-  table2.sample[,5] <- as.numeric(as.character(table2.sample.Temp$Area.N))
-  table2.sample[,6] <- as.numeric(as.character(table2.sample.Temp$d15N))
-  table2.sample[,10] <- as.numeric(as.character(table2.sample.Temp$Dilution))
-  table2.sample[,11] <- as.numeric(as.character(table2.sample.Temp$Area.C))
-  table2.sample[,12] <- as.numeric(as.character(table2.sample.Temp$d13C))
+  table2.sample[,5] <- as.numeric(as.character(table2.sample.Temp$exportAread15))
+  table2.sample[,6] <- as.numeric(as.character(table2.sample.Temp$exportd15))
+  table2.sample[,10] <- as.numeric(as.character(table2.sample.Temp$dilFact))
+  table2.sample[,11] <- as.numeric(as.character(table2.sample.Temp$exportAread13))
+  table2.sample[,12] <- as.numeric(as.character(table2.sample.Temp$exportd13))
 
   toConvert <- c(5,6, 10, 11, 12)
 
@@ -1692,6 +1785,10 @@ table2 <- reactive({
   } else {NULL}
 
   
+})
+
+output$toCheck <- renderTable({
+table2()[[1]]
 })
 
 table2.standard <- reactive({
@@ -1791,54 +1888,68 @@ return(table2.sample.Karina)
 })
 
 output$dataSampleKarina <- renderDT({
-   if(length(input$C.define) > 1 & length(input$N.define) > 1 ) {
-     
+  if(length(input$C.define) > 1 & length(input$N.define) > 1 ) {
+  table2.sample.Karina()
+} else {}
+})
+
+output$SaveButton <- renderUI({
+  actionButton("save", "Save the data")
+})
+
+output$Save <- renderUI({
+
+    if(!is.null(input$save)) {
+    if(input$save > 0){
+      isolate({
+        if(length(input$C.define) > 1 & length(input$N.define) > 1 ) {
+
   if(input$nameSession == "Name of the session") {
     toAdd <- ""
   } else {
-    toAdd <- input$nameSession
+    toAdd <- paste0("_", input$nameSession)
   }
-     
+
      table0 <- matrix("", 20, 2)
-     
-table0[,1] <- c("Total C and D Isotope Analysis", 
-                "", 
+
+table0[,1] <- c("Total C and D Isotope Analysis",
+                "",
                 "1. Session settings",
-                "Date", 
-                "Samples", 
-                "Responsible", 
-                "Lab. Temp", 
-                "System", 
-                "Column", 
-                "Temp, Owen", 
-                "Carrier gas", 
-                "Carrier flow", 
+                "Date",
+                "Samples",
+                "Responsible",
+                "Lab. Temp",
+                "System",
+                "Column",
+                "Temp, Owen",
+                "Carrier gas",
+                "Carrier flow",
                 "Reference gas1",
-                "Reference flow", 
+                "Reference flow",
                 "Reference gas2",
-                "Reference flow", 
-                "Method", 
+                "Reference flow",
+                "Method",
                 "", "",
                 "2. Blank corrected delta values for isotope standards"
 )
-table0[,2] <- c("", 
-                "", 
-                "", 
-                input$dateProcessig, 
-                input$SampleName, 
-                input$Responsible, 
-                input$Temperature, 
-                input$system, 
-                input$Column, 
-                input$temp.Owen, 
-                input$carrier.Gas, 
-                input$carrier.flow, 
+table0[,2] <- c("",
+                "",
+                "",
+                input$dateProcessig,
+                input$SampleName,
+                input$Responsible,
+                input$Temperature,
+                input$system,
+                input$Column,
+                input$temp.Owen,
+                input$carrier.Gas,
+                input$carrier.flow,
                 input$Reference.gas1,
-                input$Reference.flow1, 
+                input$Reference.flow1,
                 input$Reference.gas2,
-                input$Reference.flow2, 
-                input$Method, 
-                "", "", 
+                input$Reference.flow2,
+                input$Method,
+                "", "",
                 ""
 )
 table1_new <- table1()
@@ -1934,17 +2045,37 @@ mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + nrow(table1_new) + n
 mergeCells(wb, sheet = 2, cols = 2:3, rows = 21)
 mergeCells(wb, sheet = 2, cols = 4:5, rows = 21)
 
+  	if(Sys.info()[1] == "Windows"){
 
-saveWorkbook(wb, file = paste0("table2.sample.Karina_",toAdd, ".xlsx" ), overwrite = TRUE)
-  table2.sample.Karina()
-} else {}
+  	  path <- choose.dir()
+
+			} else  {
+
+			path <- jchoose.dir()
+
+			}
+
+pathExport <- paste0(path, "/finalTable.Sample.Karina",toAdd, ".xlsx")
+
+saveWorkbook(wb, file = pathExport, overwrite = TRUE)
+        }
+
+      })
+       return("Karina's results have been saved :)")
+    }
+  }
+
 })
 
 ```
 #### Final Table
 `r DTOutput("dataSampleKarina")`
 
-------------------------------------------------------------------------------------------
+`r uiOutput("SaveButton")`
+<br><br>
+`r uiOutput("Save")`
+<br><br>
+------------------------------------------------------------------------------------------------------------------------------------------------
 
 ### Peter's procedure of Normalization
 <br>
@@ -1955,7 +2086,6 @@ Define the dilution factor to consider for the normalization:
 
 
 ```{r}
-
 output$choiceDilution <- renderUI({
   
   if(!is.null(resultMatrix())) {
@@ -2137,54 +2267,66 @@ output$modelC <- renderText({
 })
 
 output$FinalTable <- renderDT({
-  
-  if(!is.null(table2.sample.Peter())) {
+  table2.sample.Peter()
+})
+
+
+output$SaveButton2 <- renderUI({
+  actionButton("save2", "Save the data")
+})
+
+output$Save2 <- renderUI({
+
+      if(!is.null(input$save2)) {
+        if(input$save2 > 0){
+          isolate({
+            if(!is.null(table2.sample.Peter())) {
       if(input$nameSession == "Name of the session") {
     toAdd <- ""
   } else {
-    toAdd <- input$nameSession
+    toAdd <- paste0("_", input$nameSession)
   }
-    
+
     table0 <- matrix("", 20, 2)
-     
-table0[,1] <- c("Total C and D Isotope Analysis", 
-                "", 
+
+table0[,1] <- c("Total C and D Isotope Analysis",
+                "",
                 "1. Session settings",
-                "Date", 
-                "Samples", 
-                "Responsible", 
-                "Lab. Temp", 
-                "System", 
-                "Column", 
-                "Temp, Owen", 
-                "Carrier gas", 
-                "Carrier flow", 
+                "Date",
+                "Samples",
+                "Responsible",
+                "Lab. Temp",
+                "System",
+                "Column",
+                "Temp, Owen",
+                "Carrier gas",
+                "Carrier flow",
                 "Reference gas1",
-                "Reference flow", 
+                "Reference flow",
                 "Reference gas2",
-                "Reference flow", 
-                "Method", 
+                "Reference flow",
+                "Method",
                 "", "",
                 "2. Blank corrected delta values for isotope standards"
 )
-table0[,2] <- c("", 
-                "", 
-                "", 
-                input$dateProcessig, 
-                input$SampleName, 
-                input$Responsible, 
-                input$Temperature, 
-                input$system, 
-                input$Column, 
-                input$temp.Owen, 
-                input$carrier.Gas, 
-                input$carrier.flow, 
+table0[,2] <- c("",
+                "",
+                "",
+                input$dateProcessig,
+                input$SampleName,
+                input$Responsible,
+                input$Temperature,
+                input$system,
+                input$Column,
+                input$temp.Owen,
+                input$carrier.Gas,
+                input$carrier.flow,
                 input$Reference.gas1,
-                input$Reference.flow1, 
+                input$Reference.flow1,
                 input$Reference.gas2,
-                input$Reference.flow2, 
-                input$Method, 
-                "", "", 
+                input$Reference.flow2,
+                input$Method,
+                "", "",
                 ""
 )
 table1_new <- table1()
@@ -2280,12 +2422,26 @@ mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + nrow(table1_new) + n
 mergeCells(wb, sheet = 2, cols = 2:3, rows = 21)
 mergeCells(wb, sheet = 2, cols = 4:5, rows = 21)
 
+  	if(Sys.info()[1] == "Windows"){
 
-saveWorkbook(wb, file = paste0("table2.sample.Peter_",toAdd, ".xlsx" ), overwrite = TRUE)
+  	  path <- choose.dir()
 
-  table2.sample.Peter()
+			} else  {
+
+			path <- jchoose.dir()
+
+			}
+
+pathExport <- paste0(path, "/finalTable.Sample.Peter",toAdd, ".xlsx")
+
+saveWorkbook(wb, file = pathExport, overwrite = TRUE)
   }
+          })
+          return("Peter's results have been saved :)")
+        }
+      }
 })
+
 ```
 
 
@@ -2306,6 +2462,10 @@ saveWorkbook(wb, file = paste0("table2.sample.Peter_",toAdd, ".xlsx" ), overwrit
 #### 3. Final Table
 <br>
 `r DTOutput("FinalTable")`
+<br>
+`r uiOutput("SaveButton2")`
+<br><br>
+`r uiOutput("Save2")`
 
 
 ------------------------------------------------------------------------------------------------------------------------------

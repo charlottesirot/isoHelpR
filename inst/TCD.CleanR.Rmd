@@ -10,6 +10,37 @@ runtime: shiny
 <br>
 
 ```{r  echo=FALSE, include = FALSE, cache= FALSE}
+#remove leading and trailing space
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+
+# Returns the indices in the vector that correspond to integer or floating point
+getNumericIndices <- function(vect) {
+ return(grep("^[+-]?([0-9]*[.])?[0-9]+$", vect, value = FALSE))
+}
+
+containsCharacter <- function(vect) {
+  numIndices <- getNumericIndices(vect)
+  result = c()
+  
+  if(length(numIndices) == 0) {return(result)}
+  for(i in 1:length(vect)){
+    printDebug(trim(vect[i]))
+    if(!is.na(trim(vect[i]))){
+      if(!is.element(i, numIndices) && trim(vect[i]) != ""){
+      result <- c(result, i)
+      }
+    }
+  }
+  
+   
+  return(result)
+}
+
+DEBUG_FILE = "/home/cha/debug.log"
+printDebug <- function(message){
+  write(paste("[", Sys.time(), "] ", message),file=DEBUG_FILE,append=TRUE)
+  write(message,file=DEBUG_FILE,append=TRUE)
+}
 complementVector <- function(VectR, x) {
   
   length.VectR <- length(VectR)
@@ -59,6 +90,18 @@ successiveValues <- function(vect) {
 }
 is.null.vector <- function(x) {
   sapply(x, is.null)
+}
+is.numeric_cha <- function(x) {
+  sapply(1:length(x), function(i) {
+    
+    if(is.null(x[i])) {return(F)}
+    
+    toTest <- as.numeric(as.character(x[i]))
+    
+    if(!is.na(toTest) & is.numeric(toTest)) {
+      return(T)
+    } else {F}
+  })
 }
 separateAnalysis_TCD <- function(data, column1) {
   
@@ -361,7 +404,7 @@ output$selectSample <- renderUI({
   
   if(!is.null(input$TCD)) {
   
-  level.identifier.1 <- levels(TCD()$Identifier.1)
+  level.identifier.1 <- levels(as.factor(TCD()$Identifier.1))
   
   div(column(12,
              br(),
@@ -383,17 +426,17 @@ output$selectSample <- renderUI({
 ```{r}
 TCD <- reactive({
   if(!is.null(input$TCD)) {
-    TCD <- read.xls (input$TCD$datapath, sheet = 1, header = TRUE)
+    TCD <- read.xls (input$TCD$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+    
+    TCD[,3] <- tolower(TCD[,3])
 
     Rank.Analysis <- 2: (nrow(TCD)+ 1) # +1 to make the excel file correspond to the R file
 
     TCD <- cbind(Rank.Analysis, TCD)
-
-    bad.Id1 <- which(TCD$Identifier.1 == "" | is.na(TCD$Identifier.1) | is.null(TCD$Identifier.1))
-
-    if(length(bad.Id1) != 0) {
-      TCD <- TCD[-bad.Id1, ]
-    } else {}
+    
+    TCD <- as.data.frame(TCD)
+    
+    TCD$rArea.Flash.TCD <- as.numeric(as.character(TCD$rArea.Flash.TCD))
 
     return(TCD)
 
@@ -402,40 +445,30 @@ TCD <- reactive({
 
 weightData <- reactive({
   if(!is.null(input$weightData)) {
-    weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE)
-
+    weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+    
+     weightData <- as.data.frame(weightData)
+    
+    weightData$Measured.Weigth..mg. <- as.numeric(as.character(weightData$Measured.Weigth..mg.))
+    
     weightData$Box.pos <- as.character(weightData$Box.pos)
+
+   
 
     return(weightData)
   }
 })
 
-############################
-## Condition 1: identifier.1
-############################
 
-bad.Id1 <- reactive({
+output$Row_Error <- renderText({
 
   if(!is.null(input$TCD)) {
+    
+    emptyRow <- which(is.null(TCD()$Analysis) | is.na(TCD()$Analysis) | TCD()$Analysis == "" | TCD()$Analysis == " ")
 
-    TCD <- read.xls (input$TCD$datapath, sheet = 1, header = TRUE)
+    if(length(emptyRow) != 0) {
 
-    level.identifier.1 <- levels(TCD$Identifier.1)
-
-    bad.Id1 <- which(TCD$Identifier.1 == "" | is.na(TCD$Identifier.1) | is.null(TCD$Identifier.1))
-
-    return(bad.Id1)
-
-  } else {}
-})
-
-output$id1_Error <- renderText({
-
-  if(!is.null(input$TCD)) {
-
-    if(length(bad.Id1()) != 0) {
-
-      toDisplay.1 <- paste("Some identifier.1 are empty. Please remove the line:", paste(bad.Id1(), sep = " ", collapse = ""))
+      toDisplay.1 <- paste("Some Analysis are missing value (DO NOT IGNORE!!). Please check the line(s):", paste((emptyRow +1), sep = " ", collapse = " "))
 
     } else {NULL}
 
@@ -443,13 +476,15 @@ output$id1_Error <- renderText({
 
 })
 
-output$id1_OK <- renderText({
+output$Row_OK <- renderText({
 
   if(!is.null(input$TCD)) {
+    
+    emptyRow <- which(is.null(TCD()$Analysis) | is.na(TCD()$Analysis) | TCD()$Analysis == "" | TCD()$Analysis == " ")
 
-  if(length(bad.Id1()) != 0) {NULL} else {
-    toDisplay.1 <- "No problem in the identifier.1"
-  }
+    if(length(emptyRow) == 0) {
+    toDisplay.1 <- "No problem in the Analysis column"
+    } else {}
   } else {}
 })
 
@@ -460,90 +495,321 @@ output$id1_OK <- renderText({
 resultMatrix <- reactive({
 
   if(!is.null(input$TCD)) {
-
-  TCD.liste <- split(TCD(), TCD()$Identifier.1)
-
-  TCD.liste <- TCD.liste[which(names(TCD.liste) != "")]
-
-  sample <- input$sample
-
-  resultMatrix <- matrix(NA,ncol = 9) #the matrix summurizing the number of values in the rArea
-
-  error.id2 <- NULL # test that all the Identifier.2 are identicals
-  error.id2.sample <- NULL # test that all the sample have a not empty
-
-  for(i in 1: length(TCD.liste)) {
-
-    dataProv <- TCD.liste[[i]]
-
-    One.Analysis <- separateAnalysis_TCD(dataProv, dataProv$rArea.Flash.TCD)
-
-    number.Analysis <- length(One.Analysis)
-
-    for(j in 1:number.Analysis) {
-
-      if(length(unique(One.Analysis[[j]]$Identifier.2)) == 1) {
-        error.id2 <- 0
-      } else {
-        error.id2 <- 1
-      } ### 0 = all the Identifier.2 are identicals, 1 = at least one line has a different Identifier.2
+    
+    sample <- input$sample
+    
+    TCD.liste <-  split(TCD(), TCD()$Analysis)
+    
+    resultMatrix <- matrix(NA,ncol = 14) #the matrix summurizing the number of values in the rArea
+    
+    for(i in 1:length(TCD.liste)) {
       
-      cond <- sapply(1:length(sample), function(x) {length(which(names(TCD.liste)[i] == sample[x]))})
-
-      cond1 <- length(which(cond != 0)) # marker that it's a sample
-
-      cond2 <-   length(which(is.null.vector(One.Analysis[[j]]$Identifier.2) | is.na(One.Analysis[[j]]$Identifier.2) | One.Analysis[[j]]$Identifier.2 == "NA" | One.Analysis[[j]]$Identifier.2 == ""))
-
-      if(cond1 != 0 & cond2 != 0) {
-        error.id2.sample <- 1
+      One.Analysis <- TCD.liste[[i]]
+      
+      # is there some row that are empty? 
+      Analysis_vide <- length(which(One.Analysis$Row == "" | is.na(One.Analysis$Row) | is.null(One.Analysis$Row)))
+      
+      # is there some difference Row (1 = all the Identifier.1 are identicals, > 1 at least one line has a different Identifier.1)
+      Analysis_diff <- length(unique(One.Analysis$Row))
+      
+      # is there some identifier.1 that are empty? (id1_vide = nb of cell empty)
+      id1_vide <- length(which(One.Analysis$Identifier.1 == "" | is.na(One.Analysis$Identifier.1) | is.null(One.Analysis$Identifier.1)))
+      
+      # is there some difference identifier.1 (1 = all the Identifier.1 are identicals, > 1 at least one line has a different Identifier.1)
+      id1_diff <- length(unique(One.Analysis$Identifier.1))
+      
+      # is there some difference identifier.2 (1 = all the Identifier.2 are identicals, > 1 at least one line has a different Identifier.2)
+      id2_diff <- length(unique(One.Analysis$Identifier.2))
+      
+      # id2_vide for a sample = number of empty cells, for standard = number of not empty cells, if there is several id1 (so the identifity of the analysis is not very well known as a sample or a standard), id2_vide = 1
+      if(id1_vide != 0 | id1_diff > 1){
+        id2_vide <- 1
+        id2_diff <- 1
+      } else if(is.element(One.Analysis$Identifier.1[1], sample)){
+        
+        # is there some identifier.2 that are empty? (id2_vide = nb of cell empty)
+        id2_vide <- length(which(One.Analysis$Identifier.2 == "" | is.na(One.Analysis$Identifier.2) | is.null(One.Analysis$Identifier.2)))
+        
       } else {
-        error.id2.sample <- 0
-      } ### 0 = no sample id2 is empty, 1 = at least one line of the sample id2 is empty
+        
+        id2_vide <- length(which(One.Analysis$Identifier.2 != "" & !is.na(One.Analysis$Identifier.2) & !is.null(One.Analysis$Identifier.2)))
+        
+      }
+      
+      # nb of rArea value that are empty cells
+      nb.NA <- length(which(is.na(One.Analysis$rArea.Flash.TCD) | is.null(One.Analysis$rArea.Flash.TCD) | One.Analysis$rArea.Flash.TCD == ""))
+      
+      # nb of rArea value that are not empty cells (if nbValue == 0 everything is ok, nbValue = 1 errror)
+      value <- length(which(!is.na(One.Analysis$rArea.Flash.TCD) & !is.null(One.Analysis$rArea.Flash.TCD) & One.Analysis$rArea.Flash.TCD != ""))
+      
+      level.identifier.1 <- levels(as.factor(TCD()$Identifier.1))
+      
+      if(One.Analysis$Identifier.1[1] == "sucrose") {
+        
+        if(value == 1) {
+          nbValue <- 0
+        } else {
+          nbValue <- 1
+        }
+        
+      } else {
+        
+        if(value == 2) {
+          nbValue <- 0
+        } else {
+          nbValue <- 1
+        }
+        
+      }
+      
+      
+      # nb value that are non numeric
+      
+      notEmpty <- which(!is.na(One.Analysis$rArea.Flash.TCD) & !is.null(One.Analysis$rArea.Flash.TCD) & One.Analysis$rArea.Flash.TCD != "")
+      
+  vect <- One.Analysis$rArea.Flash.TCD[notEmpty]
+  
+  if(length(vect) == 0) {
+    nbCharacter <- 0
+  } else {
+      tempResult <- sapply(1:length(vect), function(x) {
+    
+    toTest <- as.numeric(as.character(vect[x]))
+    
+    return(is.na(toTest))
+  })
+  
+  if(length(which(tempResult == T)) != 0) {
+    nbCharacter <- 1
+  } else {
+    nbCharacter <- 0
+  }
+  }
+  
 
-      nbValue <- which(!is.na(One.Analysis[[j]]$rArea.Flash.TCD) & !is.null(One.Analysis[[j]]$rArea.Flash.TCD) & One.Analysis[[j]]$rArea.Flash.TCD != "")
-
-      nb.NA <- which(is.na(One.Analysis[[j]]$rArea.Flash.TCD) | is.null(One.Analysis[[j]]$rArea.Flash.TCD) | One.Analysis[[j]]$rArea.Flash.TCD == "")
-
-      toAdd <- c(names(TCD.liste)[i], as.character(One.Analysis[[j]]$Identifier.2)[1], One.Analysis[[j]]$Rank.Analysis[1], length(nbValue), length(nb.NA), error.id2, error.id2.sample, One.Analysis[[j]]$rArea.Flash.TCD[1:2])
-
-      resultMatrix <- rbind(resultMatrix, toAdd)
+      
+      toAdd <- c(as.character(One.Analysis$Identifier.1[1]), as.character(One.Analysis$Identifier.2)[1], One.Analysis$Rank.Analysis[1], Analysis_vide, Analysis_diff, id1_vide, id1_diff, id2_vide, id2_diff, nbValue, nb.NA, nbCharacter, One.Analysis$rArea.Flash.TCD[1:2])
+      
+      resultMatrix <- resultMatrix <- rbind(resultMatrix, toAdd)
 
     }
-
-  }
+    
 
   resultMatrix <- resultMatrix[-1,]
 
-  colnames(resultMatrix) <- c("Identifier.1", "Identifier.2","FirstLine", "NbValues", "Nb.NA", "error_id.2","error.id2.sample","rArea.Flash.TCD.N", "rArea.Flash.TCD.C")
+  colnames(resultMatrix) <- c("Identifier.1", "Identifier.2","FirstLine", "Analysis_vide", "Analysis_diff", "id1_vide", "id1_diff", "id2_vide", "id2_diff", "nbValue", "Nb.NA", "nbCharacter","rArea.Flash.TCD.N", "rArea.Flash.TCD.C")
   rownames(resultMatrix) <- 1:nrow(resultMatrix)
   resultMatrix <- as.data.frame(resultMatrix)
-  
+
   for(i in 3:ncol(resultMatrix)) {
-    resultMatrix[,i] <- as.numeric(as.character(resultMatrix[,i]))
+  resultMatrix[,i] <- as.numeric(as.character(resultMatrix[,i]))
   }
 
   resultMatrix <- resultMatrix[order(resultMatrix[,3]),]
 
   return(resultMatrix)
+
   } else {}
 
 })
+
+############################
+## Condition 1Bis: nb analysis
+############################
+output$Analysis_Error <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+    Analysis_vide <- which(resultMatrix()$Analysis_vide != 0)
+
+    if(length(Analysis_vide) != 0) {
+
+      toDisplay.1 <- paste("Some rows are empty. Please check the line(s):", paste(resultMatrix()$FirstLine[Analysis_vide], sep = " ", collapse = " "))
+
+    } else {NULL}
+
+  } else {}
+
+})
+
+output$Analysis_OK <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+    Analysis_vide <- which(resultMatrix()$Analysis_vide != 0)
+
+  if(length(Analysis_vide) == 0) {
+    toDisplay.1 <- "No empty row name"
+  } else {}
+  } else {}
+})
+
+output$AnalysisDiff_Error <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+    print(resultMatrix()$FirstLine[which(resultMatrix()$Analysis_diff != 1)])
+    
+    Analysis_diff <- resultMatrix()$FirstLine[which(resultMatrix()$Analysis_diff != 1)]
+
+    if(length(Analysis_diff) != 0) {
+
+      toDisplay.1 <- paste("Some rows do not have the same name. Please check the analysis beginning line(s)", paste(Analysis_diff, sep = " ", collapse = " "))
+
+    } else {NULL}
+
+  } else {}
+
+})
+
+output$AnalysisDiff_OK <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+   Analysis_diff <- resultMatrix()$FirstLine[which(resultMatrix()$Analysis_diff != 1)]
+
+    if(length(Analysis_diff) == 0) {
+
+      toDisplay.1 <-"Awesome! All the row names are similar in a single analysis."
+      
+    } else {}
+  } else {}
+})
+
+############################
+## Condition 1: identifier.1
+############################
+
+output$id1_Error <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+    id1_vide <- which(resultMatrix()$id1_vide != 0)
+
+    if(length(id1_vide) != 0) {
+
+      toDisplay.1 <- paste("Some identifier.1 are empty. Please check the analysis beginning line(s):", paste(resultMatrix()$FirstLine[id1_vide], sep = " ", collapse = " "))
+
+    } else {NULL}
+
+  } else {}
+
+})
+
+output$id1_OK <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+    id1_vide <- which(resultMatrix()$id1_vide != 0)
+
+  if(length(id1_vide) == 0) {
+    toDisplay.1 <- "No identifier.1 is empty"
+  } else {}
+  } else {}
+})
+
+output$id1Diff_Error <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+    id1_diff <- resultMatrix()$FirstLine[which(resultMatrix()$id1_diff != 1)]
+
+    if(length(id1_diff) != 0) {
+
+      toDisplay.1 <- paste("Some identifier.1 do not have the same name. Please check the the analysis beginning line(s):", paste(id1_diff, sep = " ", collapse = " "))
+
+    } else {NULL}
+
+  } else {}
+
+})
+
+output$id1Diff_OK <- renderText({
+
+  if(!is.null(input$TCD)) {
+    
+    id1_diff <- resultMatrix()$FirstLine[which(resultMatrix()$id1_diff != 1)]
+
+    if(length(id1_diff) == 0) {
+
+      toDisplay.1 <-"All the identifier.1 have the same name in a single analysis, That's great !"
+      
+    } else {}
+  } else {}
+})
+
+############################
+## Condition 2: identifier.2
+############################
+
+output$error_id.2_Error <- renderText({
+
+  if(!is.null(input$TCD)) {
+
+    error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$id2_vide != 0)]
+
+    if(length(error_id.2) != 0) {
+        paste("Some analysis show empty identifier.2. Please check in the analysis beginning line(s)", paste(error_id.2, sep = " ", collapse = " "))
+    } else {}
+
+  } else {}
+})
+
+output$error_id.2_OK <- renderText({
+
+  if(!is.null(input$TCD)) {
+
+  error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$id2_vide != 0)]
+
+  if(length(error_id.2) == 0) {
+    "Good, all the identifier.2 have a value!"
+  } else {}
+
+  } else {}
+})
+
+output$error.id2.sample_Error <- renderText({
+
+  if(!is.null(input$TCD)) {
+
+  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$id2_diff != 1)]
+  
+  if(length(error.id2.sample) != 0) {
+    paste("Some analysis show different name in their identifier.2. Please check in the analysis beginning line(s)", paste(error.id2.sample, sep = " ", collapse = " "))
+    
+  } else {}
+
+  } else {}
+
+})
+
+output$error.id2.sample_OK <- renderText({
+
+  if(!is.null(input$TCD)) {
+
+  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$id2_diff != 1)]
+
+  if(length(error.id2.sample) == 0) {
+    "No error in the names of the identifier.2, great :)"
+  } else {}
+
+  } else {}
+
+})
+
+############################
+## Condition 3: r.Area
+############################
 
 output$error.nbValue_Error <- renderText({
 
   if(!is.null(input$TCD)) {
 
-  TCD.liste <- split(TCD(), TCD()$Identifier.1)
-
-  TCD.liste <- TCD.liste[which(names(TCD.liste) != "")]
-
-  sucrose <- names(TCD.liste)[str_detect(names(TCD.liste), "ucrose")]
-
-  error.nbValue <- resultMatrix()$FirstLine[which((resultMatrix()$Identifier.1 ==  sucrose & resultMatrix()$NbValues != 1) | (resultMatrix()$Identifier.1 !=  sucrose & resultMatrix()$NbValues != 2))]
+  error.nbValue <- resultMatrix()$FirstLine[which(resultMatrix()$nbValue != 0)]
 
   if(length(error.nbValue) > 0) {
 
-    paste("There is a mistake in the number of values. Check the line(s):", paste(error.nbValue, sep = " ", collapse = " "))
+    paste("There is a mistake in the number of values. Check the analysis beginning line(s):", paste(error.nbValue, sep = " ", collapse = " "))
 
   } else {}
 
@@ -554,14 +820,8 @@ output$error.nbValue_Error <- renderText({
 output$error.nbValue_OK <- renderText({
 
     if(!is.null(input$TCD)) {
-
-      TCD.liste <- split(TCD(), TCD()$Identifier.1)
-
-      TCD.liste <- TCD.liste[which(names(TCD.liste) != "")]
-
-      sucrose <- names(TCD.liste)[str_detect(names(TCD.liste), "ucrose")]
-
-      error.nbValue <- resultMatrix()$FirstLine[which((resultMatrix()$Identifier.1 ==  sucrose & resultMatrix()$NbValues != 1) | (resultMatrix()$Identifier.1 !=  sucrose & resultMatrix()$NbValues != 2))]
+      
+      error.nbValue <- resultMatrix()$FirstLine[which(resultMatrix()$nbValue != 0)]
 
       if(length(error.nbValue) == 0) {
 
@@ -580,7 +840,7 @@ output$error.nbNA_Error <- renderText({
   error.nbNA <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.NA != 1)]
 
   if(length(error.nbNA) > 0) {
-    paste("There is a mistake in the number of NA value. Check the line(s):", paste(error.nbNA, sep = " ", collapse = " "))
+    paste("There is a mistake in the number of NA value. Check the analysis beginning line(s):", paste(error.nbNA, sep = " ", collapse = " "))
   } else {}
 
   } else {}
@@ -593,7 +853,50 @@ output$error.nbNA_OK <- renderText({
   error.nbNA <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.NA != 1)]
 
   if(length(error.nbNA) == 0) {
-    "There is a no mistake in the number of values"
+    "There is a no mistake in the number of NA"
+  } else {}
+
+  } else {}
+})
+
+output$character_Error <- renderText({
+    if(!is.null(input$TCD)) {
+      
+      TCD <- read.xls (input$TCD$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+      weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+      
+      errorChar_TCD <- containsCharacter(TCD$rArea.Flash.TCD)
+      
+      errorChar_Weight <- containsCharacter(weightData$Measured.Weigth..mg.)
+      
+      
+
+  if(length(errorChar_TCD) > 0) {
+    paste("Oups, there is a character string in your TCD file. Check the line(s):", paste(TCD()$Rank.Analysis[errorChar_TCD], sep = " ", collapse = " "))
+  } else {
+  if(length(errorChar_Weight) > 0) {
+    paste("Oups, there is a character string in your Weight file. Check the line(s):", paste(errorChar_Weight, sep = " ", collapse = " "))
+  } else {}
+  }
+
+
+
+  } else {}
+})
+
+output$character_OK <- renderText({
+
+  if(!is.null(input$TCD)) {
+
+        TCD <- read.xls (input$TCD$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+      weightData <- read.xls (input$weightData$datapath, sheet = 1, header = TRUE, stringsAsFactors=FALSE)
+      
+      errorChar_TCD <- containsCharacter(TCD$rArea.Flash.TCD)
+      
+      errorChar_Weight <- containsCharacter(weightData$Measured.Weigth..mg.)
+
+  if(length(errorChar_TCD) == 0 & length(errorChar_Weight) == 0) {
+    "Perfect!! There is no character in your files"
   } else {}
 
   } else {}
@@ -656,7 +959,7 @@ output$dataSampleToPrint <- renderDT({
 
   if(!is.null(input$TCD)) {
 
-    dataSample()
+    dataSample()[,c(1,2, (ncol(dataSample()) -1), ncol(dataSample()))]
 
   } else {}
 })
@@ -665,64 +968,11 @@ output$dataStandardToPrint <- renderDT({
 
   if(!is.null(input$TCD)) {
 
-    dataStandard()
+    dataStandard()[,c(1,2, (ncol(dataSample()) -1), ncol(dataSample()))]
 
   } else {}
 })
 
-output$error_id.2_Error <- renderText({
-
-  if(!is.null(input$TCD)) {
-
-    error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
-
-    if(length(error_id.2) != 0) {
-    paste("Some analysis show different name in their identifier.2. Please check in the analysis line(s)", paste(error_id.2, sep = " ", collapse = " "))
-    } else {}
-
-  } else {}
-})
-
-output$error_id.2_OK <- renderText({
-
-  if(!is.null(input$TCD)) {
-
-  error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
-
-  if(length(error_id.2) == 0) {
-    "All the identifier.2 values are identical within a single analysis"
-  } else {}
-
-  } else {}
-})
-
-output$error.id2.sample_Error <- renderText({
-
-  if(!is.null(input$TCD)) {
-
-  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
-
-  if(length(error.id2.sample) != 0) {
-    paste("Some analysis show an empty identifier.2. Please check in the analysis line(s)", paste(error.id2.sample, sep = " ", collapse = " "))
-  } else {}
-
-  } else {}
-
-})
-
-output$error.id2.sample_OK <- renderText({
-
-  if(!is.null(input$TCD)) {
-
-  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
-
-  if(length(error.id2.sample) == 0) {
-    "No identifier is empty in sample, great :)"
-  } else {}
-
-  } else {}
-
-})
 
 ############################
 ## Condition 4: identifier.2 for weight and TCD file shoule be in the same order
@@ -747,12 +997,13 @@ Data_plus_weight <- reactive({ ## for pasting the weight of the sample
       for(i in 1:nRow.dataSample){
         if(as.character(dataSample()$Identifier.2[i]) != as.character(weightData()$Box.pos[i])){
           errorToCount <- 1
-          line.flag <- dataSample()$Identifier.2[i]
+          line.flag <- dataSample()$FirstLine[i]
           } else {}
       }
       if(errorToCount == 0) {
         Data_plus_weight <- cbind(dataSample(), weightData()$Name, weightData()$Measured.Weigth..mg.)
-        colnames(Data_plus_weight)[10:11] <- c("sampleName", "SampleWeight")
+        Data_plus_weight <- as.data.frame(Data_plus_weight)
+        colnames(Data_plus_weight) <- c(colnames(dataSample()), "sampleName", "SampleWeight")
       } else {}
   }
 
@@ -761,15 +1012,20 @@ Data_plus_weight <- reactive({ ## for pasting the weight of the sample
   } else {}
 })
 
+output$toChec2k <- renderTable({
+dataSample()$Rank.Analysis
+})
+
 output$weight_Error <- renderText({
 
   if(!is.null(input$TCD) & !is.null(input$weightData)) {
 
   if(Data_plus_weight()[[1]][1] != 0){
     if(!is.na(Data_plus_weight()[[1]][2])){
-      paste("Weight and TCD files do not match on their identifier.2, check line(s):", paste(Data_plus_weight()[[1]][2], sep = " ", collapse = " "))
+      paste("Weight and TCD files do not match on their identifier.2 (DON'T IGNORE THIS ERROR), check line(s):",
+            paste(Data_plus_weight()[[1]][2], sep = " ", collapse = " "))
     } else {
-            paste("Weight and TCD files do not have the same number of rows")
+            paste("Weight and TCD files do not have the same number of rows (DON'T IGNORE THIS ERROR)")
     }
   } else {
     NULL
@@ -793,26 +1049,45 @@ output$weight_OK <- renderText({
 ```
 ------------------------------------------------------------------------------------------------------------------------------
 
+
+
 ### Conditions tested for cleaning
-1. Condition 1: No identifier.1 should not be empty
+
+1. Condition 1: Check that there are no missing Analysis number (definition of a single analysis)
+`r textOutput("Row_OK")`
+**`r textOutput("Row_Error")`**
+<br>
+2. Condition 2: Check that all analysis has only one single row name and that none of these cells are empty
+`r textOutput("Analysis_OK")`
+**`r textOutput("Analysis_Error")`**
+`r textOutput("AnalysisDiff_OK")`
+**`r textOutput("AnalysisDiff_Error")`**
+<br>
+3. Condition 3: Check that all analysis has only one single Identifier 1 and that none of these cells are empty
 `r textOutput("id1_OK")`
 **`r textOutput("id1_Error")`**
+`r textOutput("id1Diff_OK")`
+**`r textOutput("id1Diff_Error")`**
 <br>
-2. Condition 2: rArea Flash TCD with exactly three lines (for the sucrose, two lines) containing exactly two values (respectively one) and an empty cell (NA accepted)
-`r textOutput("error.nbValue_OK")`
-**`r textOutput("error.nbValue_Error")`**
-`r textOutput("error.nbNA_OK")`
-**`r textOutput("error.nbNA_Error")`**
-<br>
-3. Condition 3: All identifier.2 of a single analysis should be not empty and identical (samples only)
+2. Condition 4: Check that all analysis has only one single Identifier 2 and that none of these cells are empty
 **`r textOutput("error_id.2_Error")`**
 `r textOutput("error_id.2_OK")`
 **`r textOutput("error.id2.sample_Error")`**
 `r textOutput("error.id2.sample_OK")`
 <br>
-4. Condition 4: identifier.2 for weight and TCD file shoule be in the same order (for sample only)
+4. Condition 5: Check that rArea Flash TCD has exactly three lines (except for the sucrose that has only two lines) cand contains exactly two values (respectively one) and an empty cell
+`r textOutput("error.nbValue_OK")`
+**`r textOutput("error.nbValue_Error")`**
+`r textOutput("error.nbNA_OK")`
+**`r textOutput("error.nbNA_Error")`**
+<br>
+5. Condition 6: Check that the order of the samples are the same between the TCD and weight files
 **`r textOutput("weight_Error")`**
 `r textOutput("weight_OK")`
+<br>
+6. Condition 7: Check that weight of the samples and rArea values do not contain any character
+`r textOutput("character_OK")`
+**`r textOutput("character_Error")`**
 <br>
 
 #### **Data Samples:**
@@ -833,7 +1108,7 @@ output$weight_OK <- renderText({
 output$forBoxPlot <- renderUI({
   if(!is.null(input$TCD)) {
 
- level.identifier.1 <- levels(TCD()$Identifier.1)
+ level.identifier.1 <- levels(as.factor(TCD()$Identifier.1))
 
  checkboxGroupInput("toDisplay", label = "",
     choices = level.identifier.1,
@@ -843,7 +1118,6 @@ output$forBoxPlot <- renderUI({
   } else {}
 
 })
-
 
 output$boxplot <- renderPlot({
 
@@ -894,23 +1168,23 @@ output$boxplot <- renderPlot({
 finalConclusion <- reactive({
 
   if(!is.null(resultMatrix())) {
-
-  error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$error_id.2 != 0)]
-  error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$error.id2.sample != 0)]
-
-  error.nbNA <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.NA != 1)]
-  
-  TCD.liste <- split(TCD(), TCD()$Identifier.1)
-
-  TCD.liste <- TCD.liste[which(names(TCD.liste) != "")]
-
-  sucrose <- names(TCD.liste)[str_detect(names(TCD.liste), "ucrose")]
-
-  error.nbValue <- resultMatrix()$FirstLine[which((resultMatrix()$Identifier.1 ==  sucrose & resultMatrix()$NbValues != 1) | (resultMatrix()$Identifier.1 !=  sucrose & resultMatrix()$NbValues != 2))]
+    
+    id1_vide <- which(resultMatrix()$id1_vide != 0)
+    id1_diff <- resultMatrix()$FirstLine[which(resultMatrix()$id1_diff != 1)]
+    
+     error_id.2 <- resultMatrix()$FirstLine[which(resultMatrix()$id2_vide != 0)]
+     error.id2.sample <- resultMatrix()$FirstLine[which(resultMatrix()$id2_diff != 1)]
+     
+     error.nbValue <- resultMatrix()$FirstLine[which(resultMatrix()$nbValue != 0)]
+     error.nbNA <- resultMatrix()$FirstLine[which(resultMatrix()$Nb.NA != 1)]
+     errorChar <- resultMatrix()$FirstLine[which(resultMatrix()$nbCharacter != 0)]
+     
+      Analysis_vide <- which(resultMatrix()$Analysis_vide != 0)
+       Analysis_diff <- resultMatrix()$FirstLine[which(resultMatrix()$Analysis_diff != 1)]
   
   if(!is.null(Data_plus_weight())) {
     
-      if(length(bad.Id1()) != 0 | length(error_id.2) != 0 | length(error.id2.sample) != 0 | Data_plus_weight()[[1]][1] != 0 | length(error.nbNA) != 0 | length(error.nbValue) != 0) {
+      if(length(Analysis_vide) != 0 | length(Analysis_diff) != 0 | length(id1_vide) != 0 | length(id1_diff) != 0 | length(error_id.2) != 0 | length(error.id2.sample) != 0 | Data_plus_weight()[[1]][1] != 0 | length(error.nbNA) != 0 | length(errorChar) != 0 |length(error.nbValue) != 0 ) {
     return(TRUE)
   } else {return(FALSE)}
     
@@ -960,10 +1234,10 @@ output$info.2 <- renderUI({
   backgroundValues <- c(0, 1167)
   content.GelA <- c(0.16, 0.42)
   
-  gelA <- levels(Data_plus_weight_table()$sampleName)[(str_detect(levels(Data_plus_weight_table()$sampleName), "el")| str_detect(levels(Data_plus_weight_table()$sampleName), "EL"))]
+  gelA <- levels(as.factor(Data_plus_weight_table()$sampleName))[(str_detect(levels(as.factor(Data_plus_weight_table()$sampleName)), "el")| str_detect(levels(as.factor(Data_plus_weight_table()$sampleName)), "EL"))]
   
   if(length(gelA) == 0) {
-    gelA <- levels(Data_plus_weight_table()$sampleName)[1]
+    gelA <- levels(as.factor(Data_plus_weight_table()$sampleName))[1]
   }
 
   div(column(6,
@@ -977,7 +1251,7 @@ output$info.2 <- renderUI({
       ),
       column(12, 
              checkboxGroupInput("gelA.Name.input", label = p("Choose the name that correspond to GelA"),
-                                choices = levels(Data_plus_weight_table()$sampleName),
+                                choices = levels(as.factor(Data_plus_weight_table()$sampleName)),
                                 selected = gelA,
                                 inline =T)
              )
@@ -992,12 +1266,7 @@ Data_plus_weight_table <- reactive({
 
    if(!is.null(Data_plus_weight())) {
 
-  tempTable <- Data_plus_weight()[[2]]
-
-  tempTable[,3] <- tempTable[,10] #(remove the Firstline)
-  tempTable[,4] <- tempTable[,11] # remove the number of value
-
-  tempTable <- tempTable[,-c(5,6,7,10,11)]
+  tempTable <- data.frame(Data_plus_weight()[[2]]$Identifier.1, Data_plus_weight()[[2]]$Identifier.2, Data_plus_weight()[[2]]$sampleName, Data_plus_weight()[[2]]$SampleWeight, Data_plus_weight()[[2]]$rArea.Flash.TCD.N, Data_plus_weight()[[2]]$rArea.Flash.TCD.C)
 
   Rank.Analysis <- 1:nrow(tempTable)
 
@@ -1021,7 +1290,8 @@ Data_plus_weight_corrected <- reactive({
   corrected.N <- Data_plus_weight_table()$rArea.Flash.TCD.N - backgroundValues()[1]
   corrected.C <- Data_plus_weight_table()$rArea.Flash.TCD.C - backgroundValues()[2]
 
-  temp <- cbind(Data_plus_weight_table(), corrected.N, corrected.C)
+  temp <- data.frame(Data_plus_weight_table(), corrected.N, corrected.C)
+  
   colnames(temp)[8:9] <- c("Corrected.Area.N", "Corrected.Area.C")
 
   return(temp)
@@ -1042,6 +1312,8 @@ GelA.table <- reactive({
       }
     }
     
+    
+    
     temp <- matrix()
     
     for(x in 1: (nrow(gelA) + 1)) {
@@ -1049,10 +1321,15 @@ GelA.table <- reactive({
       if(x == 1) {
         
         temp <- c(0, "Blank", as.character("Blank"), as.character("Blank"), 0, as.numeric(as.character(backgroundValues())), as.numeric(as.character(backgroundValues())))
+        
       } else {
          temp <- rbind(temp, gelA[x-1, ])
       }
     }
+    
+    temp[,5] <- as.numeric(as.character(temp[,5]))
+    
+    temp[1,5] <- 0
     
     mg.N.perCup <- as.numeric(as.character(temp$SampleWeight)) * content.GelA()[1] * 1000
     mg.C.perCup <- as.numeric(as.character(temp$SampleWeight)) * content.GelA()[2] * 1000
@@ -1072,16 +1349,13 @@ GelA.table <- reactive({
     temp3 <- c("Blank", as.character(temp[,4]))
     
     temp[,4] <- temp3[-2]
+    
+
 
   return(temp)
   } else {}
 
   })
-
-output$check <- renderTable({
-  GelA.table()
-})
-
 
 ```
 
@@ -1123,22 +1397,24 @@ tableGelA.tokeep.N <- reactive({
   
 })
 
+
+
+
 model.N <- reactive({
-  model.N.NR <- lm(as.numeric(as.character(tableGelA.tokeep.N()$rArea.Flash.TCD.N)) ~ as.numeric(as.character(tableGelA.tokeep.N()$mg.N.perCup)))
-  Intercept.N <- summary(model.N.NR)$coefficients[1]
-  Slope.N <- summary(model.N.NR)$coefficients[2]
+  model.N.NR <- lm(as.numeric(as.character(tableGelA.tokeep.N()$rArea.Flash.TCD.N)) ~ as.numeric(as.character(tableGelA.tokeep.N()$mg.N.perCup)) + 0)
+  Slope.N <- model.N.NR$coefficients
   
-  return(c(Intercept.N, Slope.N))
+  return(Slope.N)
 })
 
 output$linearRegression.N <- renderPlot({
   plot(as.numeric(as.character(tableGelA.tokeep.N()$rArea.Flash.TCD.N)) ~ as.numeric(as.character(tableGelA.tokeep.N()$mg.N.perCup)), ylab = "rArea.Flash.TCD.N", xlab = "mg.N.perCup")
   text(as.numeric(as.character(tableGelA.tokeep.N()$mg.N.perCup)), as.numeric(as.character(tableGelA.tokeep.N()$rArea.Flash.TCD.N)), labels=as.character(tableGelA.tokeep.N()$Identifier.2), cex= 0.7, pos=4)
-  abline(model.N()[1], model.N()[2], col = 'red')
+  abline(a = 0, b = model.N(), col = 'red')
 })
 
 output$modelN <- renderText({
-  paste("For N, the parameter of the model: intercept = ", round(model.N()[1],2), " and slope = ", round(model.N()[2], 2))
+  paste("For N, the slope of the model:", round(model.N(),2))
 })
 ```
 `r uiOutput("GelA.tokeep.N")`
@@ -1179,25 +1455,30 @@ tableGelA.tokeep.C <- reactive({
 
 })
 
-model.C <- reactive({
-  model.C.NR <- lm(as.numeric(as.character(tableGelA.tokeep.C()$rArea.Flash.TCD.C)) ~ as.numeric(as.character(tableGelA.tokeep.C()$mg.C.perCup)))
-  Intercept.C <- summary(model.C.NR)$coefficients[1]
-  Slope.C <- summary(model.C.NR)$coefficients[2]
+output$toCheck <- renderTable({
+# tableGelA.tokeep.C()
+})
 
-  return(c(Intercept.C, Slope.C))
+model.C <- reactive({
+  model.C.NR <- lm(as.numeric(as.character(tableGelA.tokeep.C()$rArea.Flash.TCD.C)) ~ as.numeric(as.character(tableGelA.tokeep.C()$mg.C.perCup)) + 0)
+  Slope.C <- model.C.NR$coefficients
+
+  return(Slope.C)
 })
 
 output$linearRegression.C <- renderPlot({
+
   plot(as.numeric(as.character(tableGelA.tokeep.C()$rArea.Flash.TCD.C)) ~ as.numeric(as.character(tableGelA.tokeep.C()$mg.C.perCup)), ylab = "rArea.Flash.TCD.C", xlab = "mg.C.perCup")
   text(as.numeric(as.character(tableGelA.tokeep.C()$mg.C.perCup)), as.numeric(as.character(tableGelA.tokeep.C()$rArea.Flash.TCD.C)), labels=as.character(tableGelA.tokeep.C()$Identifier.2), cex= 0.7, pos=4)
-  abline(model.C()[1], model.C()[2], col = 'red')
+  abline(a = 0, b = model.C(),col = 'red')
 })
 
 output$modelC <- renderText({
-  paste("For N, the parameter of the model: intercept = ", round(model.C()[1],2), " and slope = ", round(model.C()[2], 2))
+  paste("For C, the slope of the model: ", round(model.C(),2))
 })
 ```
 `r uiOutput("GelA.tokeep.C")`
+`r tableOutput("toCheck")`
 <br>
 `r plotOutput('linearRegression.C')`
 `r textOutput('modelC')`
@@ -1212,13 +1493,13 @@ finalTable.Sample <- reactive({
   
   if(!is.null(Data_plus_weight_table())) {
   
-  Weight.N.perCup <- Data_plus_weight_corrected()$Corrected.Area.N/model.N()[2]
-  Weight.C.perCup <- Data_plus_weight_corrected()$Corrected.Area.C/model.C()[2]
+  Weight.N.perCup <- Data_plus_weight_corrected()$Corrected.Area.N/model.N()
+  Weight.C.perCup <- Data_plus_weight_corrected()$Corrected.Area.C/model.C()
   
   Weight.N.kg <- Weight.N.perCup/Data_plus_weight_corrected()$SampleWeight*1000
   Weight.C.kg <- Weight.C.perCup/Data_plus_weight_corrected()$SampleWeight*1000
 
-  C.N.Ratio <- Weight.C.kg/Weight.N.kg
+  C.N.Ratio <- (Weight.C.kg/12)/(Weight.N.kg/14)
 
   temporary.TCDtable <- cbind(Data_plus_weight_corrected(),Weight.N.perCup, Weight.C.perCup, Weight.N.kg, Weight.C.kg, C.N.Ratio)
   
@@ -1235,63 +1516,92 @@ finalTable.Sample <- reactive({
 output$tableSample.ToDisplay <- renderDT({
   
   if(!is.null(Data_plus_weight_table())) {
+
+  return(finalTable.Sample())
   
+  } else {}
+})
+
+output$nameFile <- renderText({
+  if(!is.null(Data_plus_weight_table())) {
+    
+     
   if(input$nameSession == "Name of the session") {
     toAdd <- ""
   } else {
     toAdd <- input$nameSession
   }
     
+    paste("This table has already been saved in an excel sheet called: ", paste0("finalTable.Sample_",toAdd, ".csv" ))
+    
+  } else {}
+})
+
+output$SaveButton <- renderUI({ 
+  actionButton("save", "Save the data")
+})
+
+output$Save <- renderUI({
+  
+  if(!is.null(input$save)) {
+    if(input$save > 0){
+      isolate({
+    if(input$nameSession == "Name of the session") {
+    toAdd <- ""
+  } else {
+    toAdd <- paste0("_", input$nameSession)
+  }
+
   table0 <- matrix("", 24, 2)
-     
-table0[,1] <- c("Total C and D Quantification Analysis", 
-                "", 
+
+table0[,1] <- c("Total C and D Quantification Analysis",
+                "",
                 "1. Session settings",
-                "Date", 
-                "Samples", 
-                "Responsible", 
-                "Lab. Temp", 
-                "System", 
-                "Column", 
-                "Temp, Owen", 
-                "Carrier gas", 
-                "Carrier flow", 
+                "Date",
+                "Samples",
+                "Responsible",
+                "Lab. Temp",
+                "System",
+                "Column",
+                "Temp, Owen",
+                "Carrier gas",
+                "Carrier flow",
                 "Reference gas1",
-                "Reference flow", 
+                "Reference flow",
                 "Reference gas2",
-                "Reference flow", 
-                "Method", 
+                "Reference flow",
+                "Method",
                 "Content of N in Gel A house standard",
                 "Content of C in Gel A house standard",
                 "N background value for Area.Flash.TCD.N",
-                "C background value for Area.Flash.TCD.C", 
+                "C background value for Area.Flash.TCD.C",
                 "", "",
                 "2. GelA table"
 )
-table0[,2] <- c("", 
-                "", 
-                "", 
-                input$dateProcessig, 
-                input$SampleName, 
-                input$Responsible, 
-                input$Temperature, 
-                input$system, 
-                input$Column, 
-                input$temp.Owen, 
-                input$carrier.Gas, 
-                input$carrier.flow, 
+table0[,2] <- c("",
+                "",
+                "",
+                input$dateProcessig,
+                input$SampleName,
+                input$Responsible,
+                input$Temperature,
+                input$system,
+                input$Column,
+                input$temp.Owen,
+                input$carrier.Gas,
+                input$carrier.flow,
                 input$Reference.gas1,
-                input$Reference.flow1, 
+                input$Reference.flow1,
                 input$Reference.gas2,
-                input$Reference.flow2, 
-                input$Method, 
+                input$Reference.flow2,
+                input$Method,
                 input$N.gelA,
                 input$C.gelA,
                 input$N.background,
                 input$C.background,
-                "", "", 
+                "", "",
                 ""
-)  
+)
 
 normStyle <- createStyle(valign = "center", halign = "center", numFmt = "0.00")
 GeneraltitleStyle <- createStyle(valign = "center", halign = "center", fontSize = 14, textDecoration = "bold")
@@ -1345,37 +1655,40 @@ mergeCells(wb, sheet = 2, cols = 1:8, rows = 3)
 mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0))
 mergeCells(wb, sheet = 2, cols = 1:8, rows = nrow(table0) + 4 + nrow(GelA.table()))
 
-saveWorkbook(wb, file = paste0("finalTable.Sample_",toAdd, ".xlsx" ), overwrite = TRUE)
+  	if(Sys.info()[1] == "Windows"){
 
-  return(finalTable.Sample())
+  	  path <- choose.dir()
+
+			} else  {
+
+			path <- jchoose.dir()
+
+			}
+
+pathExport <- paste0(path, "/QuantFile",toAdd, ".xlsx")
+
+saveWorkbook(wb, file = pathExport, overwrite = TRUE)
+  })
+      return("Your results have been saved :)")
+    } else {}
+  } else {}
   
-  } else {}
-})
 
-output$nameFile <- renderText({
-  if(!is.null(Data_plus_weight_table())) {
+  
+
     
-     
-  if(input$nameSession == "Name of the session") {
-    toAdd <- ""
-  } else {
-    toAdd <- input$nameSession
-  }
-    
-    paste("This table has already been saved in an excel sheet called: ", paste0("finalTable.Sample_",toAdd, ".csv" ))
-    
-  } else {}
 })
 
 ```
+
 
 #### **Final Sample table**
 <br><br>
 `r DTOutput('tableSample.ToDisplay')`
 <br>
-**OBS: **
-`r textOutput("nameFile")`
+`r uiOutput("SaveButton")`
 <br><br>
+`r uiOutput("Save")`
 
 ------------------------------------------------------------------------------------------------------------------------------
 
